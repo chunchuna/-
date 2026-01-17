@@ -1,0 +1,5 @@
+{
+  "name": "AlphaStrike: 字母猎杀者",
+  "description": "一款高速2D动作游戏。通过敲击敌人身上的字母进行瞬移击杀，在不断缩小的战场中生存。敌人变强、拥有护盾或闪避能力，挑战你的反应极限。",
+  "requestFramePermissions": []
+}
