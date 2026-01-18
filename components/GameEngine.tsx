@@ -3,6 +3,7 @@ import { GameState, GameStats, Player, Enemy, EnemyType, BonusType, Particle, Ve
 import { COLORS, GAME_CONFIG, ALPHABET } from '../constants';
 import { Shield, Zap, Heart, Snowflake, Bomb } from 'lucide-react';
 import { soundService } from '../services/soundService';
+import { p2pService } from '../services/p2pService';
 
 interface GameEngineProps {
   gameState: GameState;
@@ -30,8 +31,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
   const arenaSizeRef = useRef<number>(GAME_CONFIG.initialArenaSize);
   const cameraShakeRef = useRef<number>(0);
   const comboTimerRef = useRef<number>(0);
-  const requestIdRef = useRef<number>();
+  const requestIdRef = useRef<number>(0);
   const screenFlashRef = useRef<{color: string, life: number} | null>(null);
+  const broadcastIntervalRef = useRef<number>(0);
   
   // React State for HUD
   const [hudScore, setHudScore] = useState(0);
@@ -209,7 +211,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
 
       if (target.hp > 0) {
         // HIT (Shield or Elite)
-        soundService.playHit();
+        // soundService.playHit(); // Removed default hit sound to use combo sound
         cameraShakeRef.current = 5;
         addParticle(target.pos, 5, target.color, 'spark');
         
@@ -220,14 +222,21 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         addParticle(target.pos, 1, '#fff', 'text', hitText);
         statsRef.current.score += 50;
         statsRef.current.combo++;
+        
+        // Combo Sound & Visuals
+        soundService.playCombo(statsRef.current.combo);
+
         comboTriggered = true;
         comboTimerRef.current = GAME_CONFIG.comboDecay;
       } else {
         // KILL
-        soundService.playExplosion();
+        // soundService.playExplosion(); // Removed to prioritize combo sound, or layer them? Let's use combo sound for flow
+        soundService.playCombo(statsRef.current.combo);
+
         statsRef.current.score += 100 * (1 + statsRef.current.combo * 0.1);
         statsRef.current.kills++;
         statsRef.current.combo++;
+        
         comboTriggered = true;
         if (statsRef.current.combo > statsRef.current.maxCombo) {
           statsRef.current.maxCombo = statsRef.current.combo;
@@ -300,32 +309,36 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         addParticle(target.pos, 1, '#fff', 'ring');
       }
 
+      // --- COMBO VISUAL PROMPT (Every 5) ---
+      if (comboTriggered && statsRef.current.combo > 0 && statsRef.current.combo % 5 === 0) {
+        addParticle(player.pos, 1, '#ffdd00', 'text', `${statsRef.current.combo}连击!`, 2.5); // Large text
+        triggerScreenFlash(COLORS.player, 0.2); // Brief flash
+      }
+
       // --- COMBO BUFF SYSTEM ---
       if (comboTriggered && statsRef.current.combo > 0 && statsRef.current.combo % 5 === 0) {
-        soundService.playPowerup();
         const buffType = Math.random();
         
+        // Only give major buffs occasionally or if base HP is low to balance
         if (buffType > 0.5) {
           // Heal
           if (baseHpRef.current < GAME_CONFIG.baseMaxHp) {
-            baseHpRef.current += 1;
-            setHudBaseHp(baseHpRef.current);
-            soundService.playHeal();
-            triggerScreenFlash(COLORS.bonusHeal, 0.4);
-            addParticle(player.pos, 15, COLORS.bonusHeal, 'spark');
-            addParticle(player.pos, 1, COLORS.bonusHeal, 'text', '连击: +1 HP', 1.5);
+             soundService.playPowerup();
+             baseHpRef.current += 1;
+             setHudBaseHp(baseHpRef.current);
+             addParticle(player.pos, 15, COLORS.bonusHeal, 'spark');
+             addParticle(player.pos, 1, COLORS.bonusHeal, 'text', '连击奖励: +1 HP', 1.5);
           } else {
              statsRef.current.score += 500;
-             addParticle(player.pos, 1, COLORS.player, 'text', '连击: 500分', 1.2);
+             addParticle(player.pos, 1, COLORS.player, 'text', '连击奖励: 500分', 1.2);
           }
         } else {
           // Slow
-          soundService.playSlow();
+          soundService.playPowerup(); // Subtle sound for buff
           slowTimerRef.current = Math.max(slowTimerRef.current, 10000); // 10 seconds
           if (!activeEffects.includes('SLOW')) setActiveEffects(prev => [...prev, 'SLOW']);
-          triggerScreenFlash(COLORS.bonusSlow, 0.4);
           addParticle(player.pos, 15, COLORS.bonusSlow, 'spark');
-          addParticle(player.pos, 1, COLORS.bonusSlow, 'text', '连击: 减速10s', 1.5);
+          addParticle(player.pos, 1, COLORS.bonusSlow, 'text', '连击奖励: 减速10s', 1.5);
         }
       }
       
@@ -693,6 +706,14 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       setHudBaseHp(GAME_CONFIG.baseMaxHp);
       lastTimeRef.current = performance.now();
       
+      // Update Network Status to Playing
+      p2pService.updateGameStatus('PLAYING', 0, 0);
+
+      // Start periodic broadcast
+      broadcastIntervalRef.current = window.setInterval(() => {
+        p2pService.updateGameStatus('PLAYING', statsRef.current.score, statsRef.current.timeAlive);
+      }, 1000); // 1Hz update
+
       // Start loop
       requestIdRef.current = requestAnimationFrame(loop);
     }
@@ -700,6 +721,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     return () => {
       // Stop loop
       if (requestIdRef.current) cancelAnimationFrame(requestIdRef.current);
+      if (broadcastIntervalRef.current) clearInterval(broadcastIntervalRef.current);
     };
   }, [gameState]); // Dependencies: ONLY gameState
 

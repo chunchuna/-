@@ -75,8 +75,12 @@ export interface GameStats {
 export interface PeerData {
   id: string;
   name: string;
-  totalScore: number; // Changed from highScore to totalScore
+  totalScore: number; 
   lastSeen: number;
+  // New Status Fields
+  status?: 'LOBBY' | 'PLAYING';
+  currentScore?: number;
+  currentTime?: number;
 }
 
 export interface ChatMessage {

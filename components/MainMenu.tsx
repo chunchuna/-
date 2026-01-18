@@ -22,6 +22,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
   const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
+    // Set Status to Lobby
+    p2pService.updateGameStatus('LOBBY');
+
     // Load Update Log
     fetch('./update.txt')
       .then(res => res.text())
@@ -238,14 +241,36 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
                </div>
              ) : (
                onlinePeers.map((peer, idx) => (
-                 <div key={peer.id} className="flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 rounded transition-colors border border-transparent hover:border-white/20 group">
-                   <div className="flex items-center gap-3 overflow-hidden">
-                     <span className={`font-mono font-bold w-6 text-center ${idx < 3 ? 'text-yellow-400' : 'text-gray-600'}`}>
-                       #{idx + 1}
-                     </span>
-                     <span className="text-sm font-bold text-gray-300 group-hover:text-white truncate">{peer.name}</span>
+                 <div key={peer.id} className="flex flex-col p-3 bg-white/5 hover:bg-white/10 rounded transition-colors border border-transparent hover:border-white/20 group">
+                   <div className="flex items-center justify-between w-full">
+                     <div className="flex items-center gap-3 overflow-hidden">
+                       <span className={`font-mono font-bold w-6 text-center ${idx < 3 ? 'text-yellow-400' : 'text-gray-600'}`}>
+                         #{idx + 1}
+                       </span>
+                       <span className="text-sm font-bold text-gray-300 group-hover:text-white truncate">{peer.name}</span>
+                     </div>
+                     <span className="font-mono text-cyan-400 text-sm ml-2">{peer.totalScore.toLocaleString()}</span>
                    </div>
-                   <span className="font-mono text-cyan-400 text-sm ml-2">{peer.totalScore.toLocaleString()}</span>
+                   
+                   {/* Status Indicator */}
+                   <div className="mt-2 text-[10px] flex justify-between items-center pl-9 text-gray-500">
+                      {peer.status === 'PLAYING' ? (
+                        <>
+                           <span className="text-yellow-500 animate-pulse flex items-center gap-1">
+                             <span className="w-1.5 h-1.5 rounded-full bg-yellow-500"></span>
+                             游戏中
+                           </span>
+                           <span className="font-mono text-gray-400">
+                             {(peer.currentScore || 0).toLocaleString()}分 | {(peer.currentTime || 0).toFixed(0)}s
+                           </span>
+                        </>
+                      ) : (
+                        <span className="text-gray-600 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-800"></span>
+                          大厅待命
+                        </span>
+                      )}
+                   </div>
                  </div>
                ))
              )}

@@ -10,7 +10,7 @@ class P2PService {
   private sendChatAction: any;
   private onStatus: any;
   private peers: Map<string, PeerData> = new Map();
-  private selfData: PeerData = { id: '', name: 'Unknown', totalScore: 0, lastSeen: Date.now() };
+  private selfData: PeerData = { id: '', name: 'Unknown', totalScore: 0, lastSeen: Date.now(), status: 'LOBBY' };
   private listeners: ((peers: PeerData[]) => void)[] = [];
   private chatListeners: ((msg: ChatMessage) => void)[] = [];
 
@@ -44,7 +44,10 @@ class P2PService {
           id: peerId,
           name: data.name || 'Unknown',
           totalScore: data.totalScore || 0,
-          lastSeen: Date.now()
+          lastSeen: Date.now(),
+          status: data.status,
+          currentScore: data.currentScore,
+          currentTime: data.currentTime
         });
         this.notifyListeners();
       });
@@ -92,6 +95,13 @@ class P2PService {
     this.broadcastStatus();
   }
 
+  public updateGameStatus(status: 'LOBBY' | 'PLAYING', currentScore: number = 0, currentTime: number = 0) {
+    this.selfData.status = status;
+    this.selfData.currentScore = currentScore;
+    this.selfData.currentTime = currentTime;
+    this.broadcastStatus();
+  }
+
   public sendMessage(text: string) {
     if (!this.sendChatAction) return;
     
@@ -118,7 +128,10 @@ class P2PService {
     if (this.sendStatus) {
       this.sendStatus({
         name: this.selfData.name,
-        totalScore: this.selfData.totalScore
+        totalScore: this.selfData.totalScore,
+        status: this.selfData.status,
+        currentScore: this.selfData.currentScore,
+        currentTime: this.selfData.currentTime
       });
     }
   }
