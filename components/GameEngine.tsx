@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GameState, GameStats, Player, Enemy, EnemyType, BonusType, Particle, Vector2 } from '../types';
-import { COLORS, GAME_CONFIG, ALPHABET } from '../constants';
+import { COLORS, GAME_CONFIG, ALPHABET, DIFFICULTY_CURVE } from '../constants';
 import { Shield, Zap, Heart, Snowflake, Bomb } from 'lucide-react';
 import { soundService } from '../services/soundService';
 import { p2pService } from '../services/p2pService';
@@ -73,11 +73,64 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     screenFlashRef.current = { color, life };
   };
 
+  // --- Difficulty Logic ---
+  const getDifficultyParams = (kills: number) => {
+    // Find the current stage and next stage for interpolation
+    let stageIndex = 0;
+    for (let i = 0; i < DIFFICULTY_CURVE.length; i++) {
+      if (kills >= DIFFICULTY_CURVE[i].kills) {
+        stageIndex = i;
+      } else {
+        break;
+      }
+    }
+
+    const currentStage = DIFFICULTY_CURVE[stageIndex];
+    const nextStage = DIFFICULTY_CURVE[stageIndex + 1];
+
+    if (!nextStage) {
+      // Reached max defined stage, return current values
+      return {
+        spawnInterval: currentStage.spawnInterval,
+        speedMulti: currentStage.speedMulti,
+        weights: currentStage.weights
+      };
+    }
+
+    // Linear Interpolation (Lerp)
+    const progress = (kills - currentStage.kills) / (nextStage.kills - currentStage.kills);
+    const clampedProgress = Math.max(0, Math.min(1, progress));
+
+    const lerp = (start: number, end: number, t: number) => start + (end - start) * t;
+
+    return {
+      spawnInterval: lerp(currentStage.spawnInterval, nextStage.spawnInterval, clampedProgress),
+      speedMulti: lerp(currentStage.speedMulti, nextStage.speedMulti, clampedProgress),
+      // Weights don't interpolate smoothly well, just use current stage's weights
+      // or next stage's weights if we are halfway through? 
+      // Using current stage is safer for discrete difficulty steps defined in config.
+      weights: currentStage.weights 
+    };
+  };
+
+  const getWeightedEnemyType = (weights: Record<EnemyType, number>): EnemyType => {
+    const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
+    let random = Math.random() * totalWeight;
+    
+    for (const [type, weight] of Object.entries(weights)) {
+      random -= weight;
+      if (random <= 0) {
+        return type as EnemyType;
+      }
+    }
+    return EnemyType.NORMAL; // Fallback
+  };
+
   // Helper: Spawn Enemy
   const spawnEnemy = () => {
     const side = Math.floor(Math.random() * 4);
     const size = arenaSizeRef.current;
-    const offset = 60; // Increased offset so big enemies don't spawn onscreen
+    const offset = 60; 
     let x = 0, y = 0;
 
     switch (side) {
@@ -93,51 +146,44 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       ? availableChars[Math.floor(Math.random() * availableChars.length)] 
       : ALPHABET[Math.floor(Math.random() * 26)]; 
 
-    // Difficulty Progression
-    const kills = statsRef.current.kills;
-    const difficulty = Math.min(kills / 100, 1.0);
-    const rand = Math.random();
-    
-    let type = EnemyType.NORMAL;
+    // --- Dynamic Difficulty Application ---
+    const diffParams = getDifficultyParams(statsRef.current.kills);
+    const type = getWeightedEnemyType(diffParams.weights);
+
     let color = COLORS.enemyNormal;
     let hp = 1;
     let radius = 18;
+
+    // Apply Type Attributes
+    switch (type) {
+      case EnemyType.ELITE:
+        color = COLORS.enemyElite;
+        hp = Math.floor(randomRange(5, 8));
+        radius = 28;
+        break;
+      case EnemyType.REFLECT:
+        color = COLORS.enemyReflect;
+        hp = 1;
+        break;
+      case EnemyType.ROTATING:
+        color = COLORS.enemyRotating;
+        hp = 1;
+        break;
+      case EnemyType.SHIELD:
+        color = COLORS.enemyShield;
+        hp = 2;
+        break;
+      case EnemyType.FAST:
+        color = COLORS.enemyFast;
+        hp = 1;
+        break;
+      default:
+        color = COLORS.enemyNormal;
+        hp = 1;
+    }
+
+    // Bonus Item Logic (Independent 15% chance)
     let bonus = BonusType.NONE;
-
-    // Enemy Type Logic
-    // Elite (Starts appearing after 30 kills)
-    if (kills > 30 && rand < 0.05 + (difficulty * 0.1)) {
-      type = EnemyType.ELITE;
-      color = COLORS.enemyElite;
-      hp = Math.floor(randomRange(5, 8)); // 5 to 7 HP
-      radius = 28; // Bigger
-    }
-    // Reflect (Now starts appearing after 3 kills - Adjusted for better visibility)
-    else if (kills > 3 && rand < 0.15 + (difficulty * 0.1)) {
-      type = EnemyType.REFLECT;
-      color = COLORS.enemyReflect;
-      hp = 1;
-    }
-    // Rotating (Starts appearing after 15 kills)
-    else if (kills > 15 && rand < 0.2 + (difficulty * 0.15)) {
-      type = EnemyType.ROTATING;
-      color = COLORS.enemyRotating;
-      hp = 1;
-    }
-    // Shield
-    else if (rand < 0.2 + (difficulty * 0.15)) {
-      type = EnemyType.SHIELD;
-      color = COLORS.enemyShield;
-      hp = 2; 
-    } 
-    // Fast
-    else if (rand < 0.35 + (difficulty * 0.2)) {
-      type = EnemyType.FAST;
-      color = COLORS.enemyFast;
-      hp = 1;
-    }
-
-    // Bonus Item Logic (15% chance, independent of type)
     if (Math.random() < 0.15) {
       const bonusRand = Math.random();
       if (bonusRand < 0.4) {
@@ -152,15 +198,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       }
     }
 
-    // Speed scaling
-    const speedMultiplier = 1 + (difficulty * 2.0);
+    // Speed calculation
     let baseSpeed = GAME_CONFIG.enemySpeedBase;
-    
     if (type === EnemyType.FAST) baseSpeed *= 1.5;
-    if (type === EnemyType.ELITE) baseSpeed *= 0.6; // Elites are slower
-    if (type === EnemyType.REFLECT) baseSpeed *= 0.8; // Reflect slightly slower
+    if (type === EnemyType.ELITE) baseSpeed *= 0.6;
+    if (type === EnemyType.REFLECT) baseSpeed *= 0.8;
 
-    const finalSpeed = Math.min(baseSpeed * speedMultiplier, GAME_CONFIG.enemySpeedMax);
+    const finalSpeed = Math.min(baseSpeed * diffParams.speedMulti, GAME_CONFIG.enemySpeedMax);
 
     enemiesRef.current.push({
       id: Math.random().toString(),
@@ -430,9 +474,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       spawnTimerRef.current -= rawDt * 1000; // Spawn timer runs on real time
       if (spawnTimerRef.current <= 0) {
         spawnEnemy();
-        const difficulty = Math.min(statsRef.current.kills / 80, 0.9);
-        const nextSpawnTime = GAME_CONFIG.baseSpawnRate * (1 - difficulty);
-        spawnTimerRef.current = Math.max(nextSpawnTime, GAME_CONFIG.minSpawnRate);
+        // Recalculate next spawn time based on dynamic difficulty
+        const diffParams = getDifficultyParams(statsRef.current.kills);
+        spawnTimerRef.current = Math.max(diffParams.spawnInterval, GAME_CONFIG.minSpawnRate);
       }
 
       // Update Enemies
