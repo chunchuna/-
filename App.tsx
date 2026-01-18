@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { GameState, GameStats } from './types';
-import GameEngine from './components/GameEngine';
-import MainMenu from './components/MainMenu';
-import GameOver from './components/GameOver';
-import NameInput from './components/NameInput';
-import { p2pService } from './services/p2pService';
+import { GameState, GameStats } from './types.ts';
+import GameEngine from './components/GameEngine.tsx';
+import MainMenu from './components/MainMenu.tsx';
+import GameOver from './components/GameOver.tsx';
+import NameInput from './components/NameInput.tsx';
+import { p2pService } from './services/p2pService.ts';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.INIT);

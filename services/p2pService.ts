@@ -1,5 +1,5 @@
 import { joinRoom } from 'trystero/torrent';
-import { PeerData } from '../types';
+import { PeerData } from '../types.ts';
 
 // Configuration
 const ROOM_ID = 'alpha_strike_lobby_v1';

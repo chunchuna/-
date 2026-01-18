@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { GameStats } from "../types";
+import { GameStats } from "../types.ts";
 
 const getSystemInstruction = () => `
 你是一个名为“阿尔法”的赛博朋克战斗模拟系统的AI指挥官。
@@ -18,12 +18,15 @@ const getSystemInstruction = () => `
 `;
 
 export const generateBattleReport = async (stats: GameStats): Promise<string> => {
-  if (!process.env.API_KEY) {
+  // Safe check for process.env
+  const apiKey = typeof process !== 'undefined' && process.env ? process.env.API_KEY : null;
+
+  if (!apiKey) {
     return "指挥官连接离线：缺少 API 密钥。";
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
     
     const prompt = `
       分析本次战斗数据:

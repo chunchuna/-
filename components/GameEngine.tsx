@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { GameState, GameStats, Player, Enemy, EnemyType, BonusType, Particle, Vector2 } from '../types';
-import { COLORS, GAME_CONFIG, ALPHABET } from '../constants';
+import { GameState, GameStats, Player, Enemy, EnemyType, BonusType, Particle, Vector2 } from '../types.ts';
+import { COLORS, GAME_CONFIG, ALPHABET } from '../constants.ts';
 import { Shield, Zap, Heart, Snowflake, Bomb } from 'lucide-react';
 
 interface GameEngineProps {

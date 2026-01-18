@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { GameStats } from '../types';
+import { GameStats } from '../types.ts';
 import { RefreshCw, Trophy, Target, Clock, Activity, Zap } from 'lucide-react';
-import { generateBattleReport } from '../services/geminiService';
+import { generateBattleReport } from '../services/geminiService.ts';
 
 interface GameOverProps {
   stats: GameStats;
