@@ -50,7 +50,7 @@ const NameInput: React.FC<NameInputProps> = ({ onConfirm }) => {
          </form>
 
          <div className="mt-8 text-[10px] text-gray-600 leading-relaxed">
-           * 此代号将用于全球防御网络 (P2P) 的识别。<br/>
+           * 此代号将用于全球防御网络的识别。<br/>
            * 系统不保存任何个人数据。
          </div>
        </div>
