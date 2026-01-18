@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Play, Globe, Users, FileText, ChevronUp } from 'lucide-react';
-import { PeerData } from '../types.ts';
-import { p2pService } from '../services/p2pService.ts';
+import { PeerData } from '../types';
+import { p2pService } from '../services/p2pService';
 
 interface MainMenuProps {
   onStart: () => void;

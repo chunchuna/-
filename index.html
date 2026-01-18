@@ -4,7 +4,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
     <title>AlphaStrike: Letter Hunter</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎯</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
@@ -36,7 +35,6 @@
   <script type="importmap">
 {
   "imports": {
-    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
@@ -47,16 +45,8 @@
   }
 }
 </script>
-<!-- Polyfill for process -->
-<script>
-  window.process = window.process || { env: { NODE_ENV: 'production' } };
-</script>
-<!-- Babel for in-browser compilation -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
   <body>
     <div id="root"></div>
-    <!-- Point to .js file to ensure correct MIME type from GitHub Pages -->
-    <script type="text/babel" data-presets="react,typescript" data-type="module" src="./main.js"></script>
   </body>
 </html>
