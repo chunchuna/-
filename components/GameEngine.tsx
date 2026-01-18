@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { GameState, GameStats, Player, Enemy, EnemyType, BonusType, Particle, Vector2 } from '../types';
 import { COLORS, GAME_CONFIG, ALPHABET } from '../constants';
 import { Shield, Zap, Heart, Snowflake, Bomb } from 'lucide-react';
+import { soundService } from '../services/soundService';
 
 interface GameEngineProps {
   gameState: GameState;
@@ -160,10 +161,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         target.pos.y += Math.sin(dodgeAngle) * dodgeDist;
         addParticle(target.pos, 5, COLORS.enemyFast, 'text', '闪避!');
         cameraShakeRef.current = 2;
+        soundService.playMiss(); // Dodge sounds like a miss
         return; 
       }
 
       // Move Player
+      soundService.playLaser(); // Shoot/Dash sound
       player.trail.push({ ...player.pos });
       if (player.trail.length > 10) player.trail.shift();
       player.pos = { ...target.pos };
@@ -173,6 +176,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
 
       if (target.hp > 0) {
         // Shield Hit
+        soundService.playHit(); // Shield hit sound
         cameraShakeRef.current = 5;
         addParticle(target.pos, 5, target.color, 'spark');
         addParticle(target.pos, 1, '#fff', 'text', '格挡');
@@ -181,6 +185,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         comboTimerRef.current = GAME_CONFIG.comboDecay;
       } else {
         // Kill Logic
+        soundService.playExplosion();
         statsRef.current.score += 100 * (1 + statsRef.current.combo * 0.1);
         statsRef.current.kills++;
         statsRef.current.combo++;
@@ -191,15 +196,18 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
 
         // Apply Bonuses
         if (target.bonus === BonusType.HEAL) {
+          soundService.playPowerup();
           baseHpRef.current = Math.min(baseHpRef.current + 1, GAME_CONFIG.baseMaxHp);
           setHudBaseHp(baseHpRef.current);
           addParticle({x:0, y:0}, 10, COLORS.bonusHeal, 'spark');
           addParticle({x:0, y:0}, 1, COLORS.bonusHeal, 'text', '基地修复!', 1.5);
         } else if (target.bonus === BonusType.SLOW) {
+          soundService.playPowerup();
           slowTimerRef.current = GAME_CONFIG.slowDuration;
           setActiveEffects(prev => [...prev, 'SLOW']);
           addParticle(target.pos, 1, COLORS.bonusSlow, 'text', '全域减速!');
         } else if (target.bonus === BonusType.BOMB) {
+          soundService.playExplosion();
           // AOE Logic
           const bombPos = target.pos;
           addParticle(bombPos, 1, COLORS.bonusBomb, 'shockwave');
@@ -240,6 +248,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       }
       
     } else {
+      soundService.playMiss();
       statsRef.current.combo = 0;
       statsRef.current.misses++;
       cameraShakeRef.current = 5;
@@ -303,6 +312,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
           enemy.pos.y += moveY;
         } else {
           // HIT BASE
+          soundService.playBaseAlarm();
           baseHpRef.current -= 1;
           setHudBaseHp(baseHpRef.current);
           cameraShakeRef.current = 20;
@@ -513,6 +523,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
 
   useEffect(() => {
     if (gameState === GameState.PLAYING) {
+      soundService.startBGM(); // Start music
       playerRef.current = {
         id: 'p1', pos: { x: 0, y: 0 }, radius: 10, color: COLORS.player, trail: [], energy: 100, isAlive: true
       };

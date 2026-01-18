@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { GameStats } from '../types';
 import { RefreshCw, Trophy, Target, Clock, Activity, Zap } from 'lucide-react';
 import { generateBattleReport } from '../services/geminiService';
+import { soundService } from '../services/soundService';
 
 interface GameOverProps {
   stats: GameStats;
@@ -85,6 +86,7 @@ const GameOver: React.FC<GameOverProps> = ({ stats, onRestart }) => {
 
         <button 
           onClick={onRestart}
+          onMouseEnter={() => soundService.playUIHover()}
           className="w-full py-4 bg-white text-black font-bold font-display uppercase tracking-widest hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
         >
           <RefreshCw size={18} />

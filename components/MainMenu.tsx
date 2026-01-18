@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Play, Globe, Users, FileText, ChevronUp } from 'lucide-react';
 import { PeerData } from '../types';
 import { p2pService } from '../services/p2pService';
+import { soundService } from '../services/soundService';
 
 interface MainMenuProps {
   onStart: () => void;
@@ -93,6 +94,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
           <button 
             onClick={onStart}
             disabled={isAnimating}
+            onMouseEnter={() => soundService.playUIHover()}
             className={`w-full md:w-auto group relative px-12 py-4 text-black font-bold text-xl font-display uppercase tracking-widest transition-all clip-path-polygon hover:scale-105 active:scale-95 mb-8 ${isAnimating ? 'bg-gray-600 cursor-wait' : 'bg-cyan-600 hover:bg-cyan-500'}`}
             style={{ clipPath: 'polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%)' }}
           >
