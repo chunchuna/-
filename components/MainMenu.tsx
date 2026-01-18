@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Play, Globe, Users, FileText, ChevronUp } from 'lucide-react';
-import { PeerData } from '../types';
+import { Play, Globe, Users, FileText, ChevronUp, MessageSquare, Send } from 'lucide-react';
+import { PeerData, ChatMessage } from '../types';
 import { p2pService } from '../services/p2pService';
 import { soundService } from '../services/soundService';
 
@@ -13,6 +13,9 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
   const [updateLog, setUpdateLog] = useState<string>('读取服务器日志...');
   const [onlinePeers, setOnlinePeers] = useState<PeerData[]>([]);
   const [selfData, setSelfData] = useState<PeerData | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
   
   // Animation State
   const [displayScore, setDisplayScore] = useState(0);
@@ -26,8 +29,17 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
       .catch(() => setUpdateLog("无法连接到更新服务器。"));
 
     // Subscribe to Network Peers
-    const unsubscribe = p2pService.subscribe((peers) => {
+    const unsubscribePeers = p2pService.subscribe((peers) => {
       setOnlinePeers(peers);
+    });
+
+    // Subscribe to Chat
+    const unsubscribeChat = p2pService.subscribeChat((msg) => {
+       setChatMessages(prev => [...prev.slice(-49), msg]); // Keep last 50
+       // Optional: play sound on receive if not from self
+       if (msg.senderId !== p2pService.getSelf()?.id) {
+         soundService.playUIHover(); // Subtle blip for chat
+       }
     });
     
     // Initial Self Data
@@ -67,17 +79,34 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
       setDisplayScore(currentSelf?.totalScore || 0);
     }
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribePeers();
+      unsubscribeChat();
+    };
   }, [lastRunScore]);
 
+  // Auto scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+    
+    p2pService.sendMessage(chatInput.trim());
+    setChatInput('');
+    soundService.playUIConfirm(); // Confirm sound for send
+  };
+
   return (
-    <div className="relative z-10 flex flex-col md:flex-row h-screen bg-black/90 text-white overflow-hidden">
+    <div className="relative z-10 flex flex-col lg:flex-row h-screen bg-black/90 text-white overflow-hidden">
       
       {/* Background */}
       <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.03)_1px,transparent_1px)] bg-[size:30px_30px] pointer-events-none" />
 
-      {/* Left Panel: Game Title & Actions */}
-      <div className="w-full md:w-2/3 p-8 md:p-12 flex flex-col justify-center relative z-10">
+      {/* COL 1: Game Title & Actions (40% width on Desktop) */}
+      <div className="w-full lg:w-5/12 p-8 md:p-12 flex flex-col justify-center relative z-10">
         <div className="mb-2 inline-flex items-center gap-2 px-3 py-1 w-fit rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs tracking-[0.2em]">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
             全球网络已连接
@@ -105,7 +134,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
           </button>
 
           {/* Update Log Panel */}
-          <div className="mt-auto border-t border-gray-800 pt-6">
+          <div className="mt-auto border-t border-gray-800 pt-6 hidden md:block">
             <div className="flex items-center gap-2 text-gray-500 mb-2 font-mono text-xs">
               <FileText size={14} />
               系统更新日志
@@ -116,8 +145,58 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
           </div>
       </div>
 
-      {/* Right Panel: Network Status & Leaderboard */}
-      <div className="w-full md:w-1/3 border-l border-gray-800 bg-black/40 backdrop-blur-sm p-6 flex flex-col relative z-10">
+      {/* COL 2: Chat Area (35% width on Desktop) - West of Leaderboard */}
+      <div className="w-full lg:w-4/12 border-t lg:border-t-0 lg:border-l lg:border-r border-gray-800 bg-black/40 backdrop-blur-sm p-4 flex flex-col relative z-10 h-1/3 lg:h-auto">
+        <div className="flex items-center gap-2 text-cyan-400 mb-4 pb-2 border-b border-gray-800/50">
+           <MessageSquare size={18} />
+           <span className="font-display font-bold tracking-widest">公共频道</span>
+        </div>
+        
+        {/* Messages List */}
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar mb-4 space-y-3">
+           {chatMessages.length === 0 ? (
+             <div className="text-gray-600 text-xs font-mono text-center mt-10">
+               // 频道加密连接建立 // <br/>
+               // 暂无通讯记录 //
+             </div>
+           ) : (
+             chatMessages.map((msg) => (
+               <div key={msg.id} className="text-sm font-mono break-words">
+                 <span className={`${msg.senderId === selfData?.id ? 'text-cyan-400' : 'text-yellow-500'} font-bold text-xs`}>
+                   [{msg.senderName}]
+                 </span>
+                 <span className="text-gray-400 text-[10px] ml-2">
+                   {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                 </span>
+                 <p className="text-gray-200 mt-1 pl-2 border-l-2 border-gray-800">{msg.text}</p>
+               </div>
+             ))
+           )}
+           <div ref={chatEndRef} />
+        </div>
+
+        {/* Input */}
+        <form onSubmit={handleSendChat} className="flex gap-2 relative">
+           <input 
+             type="text" 
+             value={chatInput}
+             onChange={(e) => setChatInput(e.target.value)}
+             placeholder="发送讯息..."
+             maxLength={50}
+             className="flex-1 bg-gray-900/50 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none transition-colors font-mono"
+           />
+           <button 
+             type="submit"
+             disabled={!chatInput.trim()}
+             className="px-3 bg-cyan-900/50 text-cyan-400 border border-cyan-800 rounded hover:bg-cyan-500 hover:text-black transition-all disabled:opacity-50"
+           >
+             <Send size={16} />
+           </button>
+        </form>
+      </div>
+
+      {/* COL 3: Network Status & Leaderboard (25% width on Desktop) */}
+      <div className="w-full lg:w-3/12 border-t lg:border-t-0 border-gray-800 bg-black/60 backdrop-blur-md p-6 flex flex-col relative z-10 h-1/3 lg:h-auto">
          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-800">
            <div className="flex items-center gap-2 text-cyan-400">
              <Globe size={18} />
@@ -140,7 +219,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
                )}
             </div>
             <div className="flex justify-between items-end">
-              <span className="text-xl font-bold text-white">{selfData?.name || 'Unknown'}</span>
+              <span className="text-xl font-bold text-white truncate max-w-[120px]">{selfData?.name || 'Unknown'}</span>
               <div className="flex flex-col items-end">
                  <span className="text-[10px] text-gray-400 tracking-wider">总贡献分</span>
                  <span className={`font-mono text-xl ${isAnimating ? 'text-yellow-400 scale-110' : 'text-cyan-400'} transition-all duration-100`}>
@@ -160,13 +239,13 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
              ) : (
                onlinePeers.map((peer, idx) => (
                  <div key={peer.id} className="flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 rounded transition-colors border border-transparent hover:border-white/20 group">
-                   <div className="flex items-center gap-3">
+                   <div className="flex items-center gap-3 overflow-hidden">
                      <span className={`font-mono font-bold w-6 text-center ${idx < 3 ? 'text-yellow-400' : 'text-gray-600'}`}>
                        #{idx + 1}
                      </span>
-                     <span className="text-sm font-bold text-gray-300 group-hover:text-white">{peer.name}</span>
+                     <span className="text-sm font-bold text-gray-300 group-hover:text-white truncate">{peer.name}</span>
                    </div>
-                   <span className="font-mono text-cyan-400 text-sm">{peer.totalScore.toLocaleString()}</span>
+                   <span className="font-mono text-cyan-400 text-sm ml-2">{peer.totalScore.toLocaleString()}</span>
                  </div>
                ))
              )}

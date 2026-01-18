@@ -1,5 +1,5 @@
 import { joinRoom } from 'trystero/torrent';
-import { PeerData } from '../types';
+import { PeerData, ChatMessage } from '../types';
 
 // Configuration
 const ROOM_ID = 'alpha_strike_lobby_v1';
@@ -7,10 +7,12 @@ const ROOM_ID = 'alpha_strike_lobby_v1';
 class P2PService {
   private room: any;
   private sendStatus: any;
+  private sendChatAction: any;
   private onStatus: any;
   private peers: Map<string, PeerData> = new Map();
   private selfData: PeerData = { id: '', name: 'Unknown', totalScore: 0, lastSeen: Date.now() };
   private listeners: ((peers: PeerData[]) => void)[] = [];
+  private chatListeners: ((msg: ChatMessage) => void)[] = [];
 
   constructor() {
     // Singleton initialization
@@ -25,8 +27,11 @@ class P2PService {
       
       // Actions
       const [sendStatus, onStatus] = this.room.makeAction('status');
+      const [sendChat, onChat] = this.room.makeAction('chat');
+
       this.sendStatus = sendStatus;
       this.onStatus = onStatus;
+      this.sendChatAction = sendChat;
 
       // Self ID 
       this.selfData.id = this.room.selfId;
@@ -42,6 +47,20 @@ class P2PService {
           lastSeen: Date.now()
         });
         this.notifyListeners();
+      });
+
+      // Handle incoming chat
+      onChat((data: any, peerId: string) => {
+        const peer = this.peers.get(peerId);
+        const name = peer ? peer.name : 'Unknown Agent';
+        const msg: ChatMessage = {
+          id: data.id,
+          senderId: peerId,
+          senderName: name,
+          text: data.text,
+          timestamp: data.timestamp
+        };
+        this.notifyChatListeners(msg);
       });
 
       // Handle peer leaving
@@ -73,6 +92,28 @@ class P2PService {
     this.broadcastStatus();
   }
 
+  public sendMessage(text: string) {
+    if (!this.sendChatAction) return;
+    
+    const msgPayload = {
+      id: Math.random().toString(36).substr(2, 9),
+      text: text,
+      timestamp: Date.now()
+    };
+    
+    this.sendChatAction(msgPayload);
+    
+    // Notify self
+    const fullMsg: ChatMessage = {
+      id: msgPayload.id,
+      senderId: this.selfData.id,
+      senderName: this.selfData.name,
+      text: msgPayload.text,
+      timestamp: msgPayload.timestamp
+    };
+    this.notifyChatListeners(fullMsg);
+  }
+
   private broadcastStatus() {
     if (this.sendStatus) {
       this.sendStatus({
@@ -102,9 +143,20 @@ class P2PService {
     };
   }
 
+  public subscribeChat(callback: (msg: ChatMessage) => void) {
+    this.chatListeners.push(callback);
+    return () => {
+      this.chatListeners = this.chatListeners.filter(l => l !== callback);
+    };
+  }
+
   private notifyListeners() {
     const list = this.getPeers();
     this.listeners.forEach(l => l(list));
+  }
+
+  private notifyChatListeners(msg: ChatMessage) {
+    this.chatListeners.forEach(l => l(msg));
   }
 
   public getPeers(): PeerData[] {

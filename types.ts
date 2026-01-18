@@ -76,3 +76,11 @@ export interface PeerData {
   totalScore: number; // Changed from highScore to totalScore
   lastSeen: number;
 }
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+}
