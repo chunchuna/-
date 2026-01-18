@@ -16,6 +16,7 @@ export enum EnemyType {
   FAST = 'FAST',    
   ROTATING = 'ROTATING', // New: Spinning text
   ELITE = 'ELITE',       // New: High HP, Big, Glowing
+  REFLECT = 'REFLECT',   // New: Chain reaction
 }
 
 export enum BonusType {
@@ -51,12 +52,13 @@ export interface Enemy extends Entity {
 export interface Particle {
   id: string;
   pos: Vector2;
+  targetPos?: Vector2; // For beams
   vel: Vector2;
   life: number; // 0-1
   decay: number;
   color: string;
   size: number;
-  type: 'spark' | 'text' | 'ring' | 'shockwave';
+  type: 'spark' | 'text' | 'ring' | 'shockwave' | 'beam';
   text?: string;
 }
 

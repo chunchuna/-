@@ -152,6 +152,27 @@ class SoundService {
     }
   }
 
+  public playReflect() {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const t = this.ctx.currentTime;
+      // Multiple fast chirps
+      for(let i=0; i<3; i++) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1200 + (i * 200), t + i * 0.05);
+        osc.frequency.exponentialRampToValueAtTime(100, t + i * 0.05 + 0.1);
+        gain.gain.setValueAtTime(0.3, t + i * 0.05);
+        gain.gain.linearRampToValueAtTime(0, t + i * 0.05 + 0.1);
+        osc.connect(gain);
+        gain.connect(this.masterGain!);
+        osc.start(t + i * 0.05);
+        osc.stop(t + i * 0.05 + 0.1);
+      }
+    } catch(e) { console.error(e); }
+  }
+
   public playExplosion() {
     if (!this.ctx || this.isMuted) return;
     try {

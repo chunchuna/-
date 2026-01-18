@@ -8,6 +8,7 @@ export const COLORS = {
   enemyShield: '#888888', // 灰色/银色 (护盾)
   enemyRotating: '#bd00ff', // 紫色 (旋转)
   enemyElite: '#ffaa00', // 金色 (精英)
+  enemyReflect: '#00ffff', // 青/电光色 (反射)
   
   // Bonus Colors
   bonusHeal: '#00ff55', // 绿色

@@ -45,20 +45,21 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
   const randomRange = (min: number, max: number) => Math.random() * (max - min) + min;
 
   // Helper: Add Particle
-  const addParticle = (pos: Vector2, count: number, color: string, type: Particle['type'] = 'spark', text?: string, sizeScale: number = 1) => {
+  const addParticle = (pos: Vector2, count: number, color: string, type: Particle['type'] = 'spark', text?: string, sizeScale: number = 1, targetPos?: Vector2) => {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = randomRange(50, 200);
       particlesRef.current.push({
         id: Math.random().toString(36).substr(2, 9),
         pos: { ...pos },
+        targetPos: targetPos, // Only for beam
         vel: type === 'text' 
           ? { x: 0, y: -50 } 
-          : type === 'shockwave' 
-             ? {x:0, y:0} // Stationary expanding ring
+          : type === 'shockwave' || type === 'beam'
+             ? {x:0, y:0} 
              : { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
         life: 1.0,
-        decay: type === 'text' ? 1.0 : randomRange(1.5, 3.0),
+        decay: type === 'text' ? 1.0 : type === 'beam' ? 3.0 : randomRange(1.5, 3.0),
         color: color,
         size: (type === 'text' ? 20 : randomRange(2, 5)) * sizeScale,
         type,
@@ -110,7 +111,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       color = COLORS.enemyElite;
       hp = Math.floor(randomRange(5, 8)); // 5 to 7 HP
       radius = 28; // Bigger
-    } 
+    }
+    // Reflect (Now starts appearing after 3 kills - Adjusted for better visibility)
+    else if (kills > 3 && rand < 0.15 + (difficulty * 0.1)) {
+      type = EnemyType.REFLECT;
+      color = COLORS.enemyReflect;
+      hp = 1;
+    }
     // Rotating (Starts appearing after 15 kills)
     else if (kills > 15 && rand < 0.2 + (difficulty * 0.15)) {
       type = EnemyType.ROTATING;
@@ -151,6 +158,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     
     if (type === EnemyType.FAST) baseSpeed *= 1.5;
     if (type === EnemyType.ELITE) baseSpeed *= 0.6; // Elites are slower
+    if (type === EnemyType.REFLECT) baseSpeed *= 0.8; // Reflect slightly slower
 
     const finalSpeed = Math.min(baseSpeed * speedMultiplier, GAME_CONFIG.enemySpeedMax);
 
@@ -204,14 +212,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       target.hp -= 1;
 
       // Check Combo Buff (Pre-calculation for 5-hit streaks)
-      // We check logic inside hit/kill blocks, but we need to know if this hit contributes to combo
-      // If we don't kill, combo still goes up.
       
       let comboTriggered = false;
 
       if (target.hp > 0) {
         // HIT (Shield or Elite)
-        // soundService.playHit(); // Removed default hit sound to use combo sound
         cameraShakeRef.current = 5;
         addParticle(target.pos, 5, target.color, 'spark');
         
@@ -230,7 +235,6 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         comboTimerRef.current = GAME_CONFIG.comboDecay;
       } else {
         // KILL
-        // soundService.playExplosion(); // Removed to prioritize combo sound, or layer them? Let's use combo sound for flow
         soundService.playCombo(statsRef.current.combo);
 
         statsRef.current.score += 100 * (1 + statsRef.current.combo * 0.1);
@@ -242,6 +246,38 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
           statsRef.current.maxCombo = statsRef.current.combo;
         }
         comboTimerRef.current = GAME_CONFIG.comboDecay;
+
+        // --- REFLECT LOGIC ---
+        if (target.type === EnemyType.REFLECT) {
+            soundService.playReflect();
+            triggerScreenFlash(COLORS.enemyReflect, 0.3);
+            
+            // Find neighbors
+            const others = enemiesRef.current.filter(e => e.id !== target.id); // Valid candidates
+            const candidates = others.map(other => ({
+                enemy: other,
+                dist: Math.sqrt(Math.pow(other.pos.x - target.pos.x, 2) + Math.pow(other.pos.y - target.pos.y, 2))
+            })).sort((a, b) => a.dist - b.dist);
+            
+            const reflectCount = Math.floor(randomRange(5, 12));
+            const targets = candidates.slice(0, reflectCount);
+            
+            if (targets.length > 0) {
+                 addParticle(target.pos, 1, COLORS.enemyReflect, 'text', `连锁 x${targets.length}`, 1.5);
+            }
+
+            targets.forEach(t => {
+                // Kill target
+                t.enemy.hp = 0;
+                addParticle(t.enemy.pos, 15, COLORS.enemyReflect, 'spark');
+                
+                // Add Beam
+                addParticle(target.pos, 1, COLORS.enemyReflect, 'beam', '', 1, t.enemy.pos);
+                
+                statsRef.current.score += 200;
+                statsRef.current.kills++;
+            });
+        }
 
         // Apply Entity Bonuses
         if (target.bonus === BonusType.HEAL) {
@@ -298,7 +334,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         // Cleanup
         enemiesRef.current.splice(targetIndex, 1);
         
-        // Remove dead from AOE just in case
+        // Remove dead from AOE/Reflect just in case
         enemiesRef.current = enemiesRef.current.filter(e => e.hp > 0);
 
         // Standard Effects
@@ -446,6 +482,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         if (p.type === 'shockwave') {
              p.size += 500 * rawDt; // Expand
              p.life -= 2.0 * rawDt;
+        } else if (p.type === 'beam') {
+             p.life -= p.decay * rawDt;
         } else {
             p.pos.x += p.vel.x * rawDt;
             p.pos.y += p.vel.y * rawDt;
@@ -545,8 +583,25 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       enemiesRef.current.forEach(enemy => {
         // Body
         ctx.beginPath();
-        ctx.arc(enemy.pos.x, enemy.pos.y, enemy.radius, 0, Math.PI * 2);
-        ctx.fillStyle = enemy.color;
+        
+        // Custom Shapes based on Type
+        if (enemy.type === EnemyType.REFLECT) {
+             // Diamond Shape
+             ctx.save();
+             ctx.translate(enemy.pos.x, enemy.pos.y);
+             ctx.rotate(time/300);
+             ctx.beginPath();
+             ctx.rect(-enemy.radius/1.2, -enemy.radius/1.2, enemy.radius*1.6, enemy.radius*1.6);
+             ctx.fillStyle = enemy.color;
+             ctx.shadowBlur = 10;
+             ctx.shadowColor = enemy.color;
+             ctx.fill();
+             ctx.restore();
+        } else {
+             // Circle Shape
+             ctx.arc(enemy.pos.x, enemy.pos.y, enemy.radius, 0, Math.PI * 2);
+             ctx.fillStyle = enemy.color;
+        }
         
         if (enemy.type === EnemyType.ELITE) {
             // Pulsing Glow for Elite
@@ -558,11 +613,15 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         } else if (enemy.bonus !== BonusType.NONE) {
            ctx.shadowBlur = 15;
            ctx.shadowColor = enemy.color;
-        } else {
+        } else if (enemy.type !== EnemyType.REFLECT) { // REFLECT handled above
            ctx.shadowBlur = 5;
            ctx.shadowColor = enemy.color;
         }
-        ctx.fill();
+        
+        if (enemy.type !== EnemyType.REFLECT) {
+           ctx.fill();
+        }
+        
         ctx.globalAlpha = 1.0;
         ctx.shadowBlur = 0;
 
@@ -641,6 +700,19 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
           ctx.strokeStyle = `rgba(255, 255, 255, ${p.life})`;
           ctx.lineWidth = 2;
           ctx.stroke();
+        } else if (p.type === 'beam' && p.targetPos) {
+           // Draw Beam
+           ctx.beginPath();
+           ctx.moveTo(p.pos.x, p.pos.y);
+           ctx.lineTo(p.targetPos.x, p.targetPos.y);
+           ctx.strokeStyle = p.color;
+           ctx.lineWidth = 3 * p.life;
+           ctx.globalAlpha = p.life;
+           ctx.shadowBlur = 10;
+           ctx.shadowColor = p.color;
+           ctx.stroke();
+           ctx.globalAlpha = 1.0;
+           ctx.shadowBlur = 0;
         } else {
           ctx.beginPath();
           ctx.arc(p.pos.x, p.pos.y, p.size * p.life, 0, Math.PI * 2);
