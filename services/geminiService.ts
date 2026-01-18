@@ -40,14 +40,4 @@ export const generateBattleReport = async (stats: GameStats): Promise<string> =>
       contents: prompt,
       config: {
         systemInstruction: getSystemInstruction(),
-        temperature: 0.8,
-        maxOutputTokens: 100,
-      },
-    });
-
-    return response.text || "数据分析失败。";
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    return "指挥官连接不稳定，无法生成战报。";
-  }
-};
+        temperature: 0.
