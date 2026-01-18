@@ -16,7 +16,8 @@ export enum EnemyType {
   FAST = 'FAST',    
   ROTATING = 'ROTATING', // New: Spinning text
   ELITE = 'ELITE',       // New: High HP, Big, Glowing
-  REFLECT = 'REFLECT',   // New: Chain reaction
+  REFLECT = 'REFLECT',   // New: Burst reaction
+  CHAIN = 'CHAIN',       // New: Chain lightning reaction
 }
 
 export enum BonusType {
@@ -47,6 +48,16 @@ export interface Enemy extends Entity {
   spawnTime: number;
   maxHp: number;
   hp: number;
+}
+
+export interface Projectile {
+  id: string;
+  pos: Vector2;
+  targetId: string; // Target Enemy ID
+  speed: number;
+  color: string;
+  type: 'BURST' | 'CHAIN';
+  chainRemaining: number;
 }
 
 export interface Particle {

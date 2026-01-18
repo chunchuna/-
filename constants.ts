@@ -10,7 +10,8 @@ export const COLORS = {
   enemyShield: '#888888', // 灰色/银色 (护盾)
   enemyRotating: '#bd00ff', // 紫色 (旋转)
   enemyElite: '#ffaa00', // 金色 (精英)
-  enemyReflect: '#00ffff', // 青/电光色 (反射)
+  enemyReflect: '#00ffff', // 青/电光色 (反射/爆发)
+  enemyChain: '#39ff14',   // 霓虹绿 (连锁)
   
   // Bonus Colors
   bonusHeal: '#00ff55', // 绿色
@@ -40,6 +41,9 @@ export const GAME_CONFIG = {
   playerDashSpeed: 10,
   comboDecay: 3000, 
   
+  // Projectile Config
+  projectileSpeed: 600, // Pixels per second (Slower than instant)
+  
   // Base Config
   baseMaxHp: 5,
   baseRadius: 40,
@@ -67,7 +71,8 @@ export const DIFFICULTY_CURVE = [
       [EnemyType.SHIELD]: 0, 
       [EnemyType.ROTATING]: 0, 
       [EnemyType.ELITE]: 0, 
-      [EnemyType.REFLECT]: 0 
+      [EnemyType.REFLECT]: 0,
+      [EnemyType.CHAIN]: 0
     } 
   },
   { 
@@ -75,12 +80,13 @@ export const DIFFICULTY_CURVE = [
     spawnInterval: 1300, 
     speedMulti: 1.1, 
     weights: { 
-      [EnemyType.NORMAL]: 70, 
+      [EnemyType.NORMAL]: 60, 
       [EnemyType.FAST]: 10, 
       [EnemyType.SHIELD]: 10, 
       [EnemyType.ROTATING]: 0, 
       [EnemyType.ELITE]: 0, 
-      [EnemyType.REFLECT]: 10 // 稍微提高出现率让玩家看见
+      [EnemyType.REFLECT]: 10, // 爆发怪
+      [EnemyType.CHAIN]: 10    // 连锁怪
     } 
   },
   { 
@@ -88,12 +94,13 @@ export const DIFFICULTY_CURVE = [
     spawnInterval: 1100, 
     speedMulti: 1.3, 
     weights: { 
-      [EnemyType.NORMAL]: 40, 
+      [EnemyType.NORMAL]: 30, 
       [EnemyType.FAST]: 20, 
       [EnemyType.SHIELD]: 20, 
-      [EnemyType.ROTATING]: 15, 
+      [EnemyType.ROTATING]: 10, 
       [EnemyType.ELITE]: 0, 
-      [EnemyType.REFLECT]: 15 
+      [EnemyType.REFLECT]: 10,
+      [EnemyType.CHAIN]: 10
     } 
   },
   { 
@@ -101,12 +108,13 @@ export const DIFFICULTY_CURVE = [
     spawnInterval: 1100, 
     speedMulti: 1.3, 
     weights: { 
-      [EnemyType.NORMAL]: 30, 
-      [EnemyType.FAST]: 20, 
+      [EnemyType.NORMAL]: 25, 
+      [EnemyType.FAST]: 15, 
       [EnemyType.SHIELD]: 15, 
       [EnemyType.ROTATING]: 15, 
       [EnemyType.ELITE]: 5, 
-      [EnemyType.REFLECT]: 15 
+      [EnemyType.REFLECT]: 12,
+      [EnemyType.CHAIN]: 13
     } 
   },
   { 
@@ -114,12 +122,13 @@ export const DIFFICULTY_CURVE = [
     spawnInterval: 1000, 
     speedMulti: 1.5, 
     weights: { 
-      [EnemyType.NORMAL]: 20, 
-      [EnemyType.FAST]: 25, 
+      [EnemyType.NORMAL]: 15, 
+      [EnemyType.FAST]: 20, 
       [EnemyType.SHIELD]: 20, 
       [EnemyType.ROTATING]: 15, 
       [EnemyType.ELITE]: 10, 
-      [EnemyType.REFLECT]: 10 
+      [EnemyType.REFLECT]: 10,
+      [EnemyType.CHAIN]: 10
     } 
   },
   { 
@@ -127,25 +136,27 @@ export const DIFFICULTY_CURVE = [
     spawnInterval: 500, 
     speedMulti: 3.0, 
     weights: { 
-      [EnemyType.NORMAL]: 15, 
-      [EnemyType.FAST]: 30, // 高速怪变多
+      [EnemyType.NORMAL]: 10, 
+      [EnemyType.FAST]: 25, 
       [EnemyType.SHIELD]: 20, 
       [EnemyType.ROTATING]: 15, 
-      [EnemyType.ELITE]: 15, // 精英怪变多
-      [EnemyType.REFLECT]: 5 
+      [EnemyType.ELITE]: 15, 
+      [EnemyType.REFLECT]: 7,
+      [EnemyType.CHAIN]: 8
     } 
   },
   { 
-    kills: 200, // 地狱阶段 (数值不再封顶，保持这个强度)
+    kills: 200, // 地狱阶段
     spawnInterval: 300, 
     speedMulti: 4.0, 
     weights: { 
-      [EnemyType.NORMAL]: 10, 
-      [EnemyType.FAST]: 30, 
+      [EnemyType.NORMAL]: 5, 
+      [EnemyType.FAST]: 25, 
       [EnemyType.SHIELD]: 20, 
       [EnemyType.ROTATING]: 20, 
       [EnemyType.ELITE]: 20, 
-      [EnemyType.REFLECT]: 5 
+      [EnemyType.REFLECT]: 5,
+      [EnemyType.CHAIN]: 5
     } 
   }
 ];

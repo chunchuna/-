@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { GameState, GameStats, Player, Enemy, EnemyType, BonusType, Particle, Vector2 } from '../types';
+import { GameState, GameStats, Player, Enemy, EnemyType, BonusType, Particle, Vector2, Projectile } from '../types';
 import { COLORS, GAME_CONFIG, ALPHABET, DIFFICULTY_CURVE } from '../constants';
 import { Shield, Zap, Heart, Snowflake, Bomb } from 'lucide-react';
 import { soundService } from '../services/soundService';
@@ -24,10 +24,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
   });
   const enemiesRef = useRef<Enemy[]>([]);
   const particlesRef = useRef<Particle[]>([]);
+  const projectilesRef = useRef<Projectile[]>([]); // NEW: Track projectiles
+  
   const baseHpRef = useRef<number>(GAME_CONFIG.baseMaxHp);
   const lastTimeRef = useRef<number>(0);
   const spawnTimerRef = useRef<number>(0);
-  const slowTimerRef = useRef<number>(0); // Global slow effect timer
+  const slowTimerRef = useRef<number>(0); 
   const arenaSizeRef = useRef<number>(GAME_CONFIG.initialArenaSize);
   const cameraShakeRef = useRef<number>(0);
   const comboTimerRef = useRef<number>(0);
@@ -73,9 +75,21 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     screenFlashRef.current = { color, life };
   };
 
+  // Helper: Spawn Projectile
+  const spawnProjectile = (startPos: Vector2, targetId: string, type: 'BURST' | 'CHAIN', chainRemaining: number, color: string) => {
+    projectilesRef.current.push({
+      id: Math.random().toString(),
+      pos: { ...startPos },
+      targetId,
+      speed: GAME_CONFIG.projectileSpeed, // Slowed down speed
+      type,
+      chainRemaining,
+      color
+    });
+  };
+
   // --- Difficulty Logic ---
   const getDifficultyParams = (kills: number) => {
-    // Find the current stage and next stage for interpolation
     let stageIndex = 0;
     for (let i = 0; i < DIFFICULTY_CURVE.length; i++) {
       if (kills >= DIFFICULTY_CURVE[i].kills) {
@@ -89,7 +103,6 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     const nextStage = DIFFICULTY_CURVE[stageIndex + 1];
 
     if (!nextStage) {
-      // Reached max defined stage, return current values
       return {
         spawnInterval: currentStage.spawnInterval,
         speedMulti: currentStage.speedMulti,
@@ -97,18 +110,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       };
     }
 
-    // Linear Interpolation (Lerp)
     const progress = (kills - currentStage.kills) / (nextStage.kills - currentStage.kills);
     const clampedProgress = Math.max(0, Math.min(1, progress));
-
     const lerp = (start: number, end: number, t: number) => start + (end - start) * t;
 
     return {
       spawnInterval: lerp(currentStage.spawnInterval, nextStage.spawnInterval, clampedProgress),
       speedMulti: lerp(currentStage.speedMulti, nextStage.speedMulti, clampedProgress),
-      // Weights don't interpolate smoothly well, just use current stage's weights
-      // or next stage's weights if we are halfway through? 
-      // Using current stage is safer for discrete difficulty steps defined in config.
       weights: currentStage.weights 
     };
   };
@@ -123,7 +131,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         return type as EnemyType;
       }
     }
-    return EnemyType.NORMAL; // Fallback
+    return EnemyType.NORMAL;
   };
 
   // Helper: Spawn Enemy
@@ -165,6 +173,10 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         color = COLORS.enemyReflect;
         hp = 1;
         break;
+      case EnemyType.CHAIN:
+        color = COLORS.enemyChain;
+        hp = 1;
+        break;
       case EnemyType.ROTATING:
         color = COLORS.enemyRotating;
         hp = 1;
@@ -203,6 +215,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     if (type === EnemyType.FAST) baseSpeed *= 1.5;
     if (type === EnemyType.ELITE) baseSpeed *= 0.6;
     if (type === EnemyType.REFLECT) baseSpeed *= 0.8;
+    if (type === EnemyType.CHAIN) baseSpeed *= 0.8;
 
     const finalSpeed = Math.min(baseSpeed * diffParams.speedMulti, GAME_CONFIG.enemySpeedMax);
 
@@ -219,6 +232,110 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       maxHp: hp,
       hp: hp
     });
+  };
+
+  // --- Logic: Handle Enemy Death ---
+  const handleEnemyDeath = (target: Enemy, sourcePos: Vector2) => {
+    // Score & Stats
+    // If called from Projectile, no combo increment? Or yes? Let's say yes but small.
+    // For simplicity, projectiles kill instantly so we handle score there.
+    // This function acts as a helper for effects.
+    
+    // --- SPECIAL ENEMY LOGIC ---
+    
+    // 1. REFLECT (Burst) - Fires multiple beams to neighbors
+    if (target.type === EnemyType.REFLECT) {
+        soundService.playReflect();
+        triggerScreenFlash(COLORS.enemyReflect, 0.2);
+        
+        const others = enemiesRef.current.filter(e => e.id !== target.id);
+        const candidates = others.map(other => ({
+            enemy: other,
+            dist: Math.sqrt(Math.pow(other.pos.x - target.pos.x, 2) + Math.pow(other.pos.y - target.pos.y, 2))
+        })).sort((a, b) => a.dist - b.dist);
+        
+        const burstCount = Math.floor(randomRange(5, 12));
+        const targets = candidates.slice(0, burstCount);
+
+        if (targets.length > 0) {
+             addParticle(target.pos, 1, COLORS.enemyReflect, 'text', `爆发 x${targets.length}`, 1.5);
+        }
+
+        targets.forEach(t => {
+            spawnProjectile(target.pos, t.enemy.id, 'BURST', 0, COLORS.enemyReflect);
+        });
+    }
+
+    // 2. CHAIN - Fires ONE beam to nearest neighbor
+    if (target.type === EnemyType.CHAIN) {
+        soundService.playReflect(); // Reuse sound or new one
+        triggerScreenFlash(COLORS.enemyChain, 0.2);
+
+        const others = enemiesRef.current.filter(e => e.id !== target.id);
+        // Find nearest
+        let nearest: Enemy | null = null;
+        let minDist = Infinity;
+        
+        others.forEach(other => {
+             const dist = Math.sqrt(Math.pow(other.pos.x - target.pos.x, 2) + Math.pow(other.pos.y - target.pos.y, 2));
+             if (dist < minDist) {
+                 minDist = dist;
+                 nearest = other;
+             }
+        });
+
+        if (nearest) {
+            // Default chain count is 5-7. If this death was caused by a projectile, 
+            // the chain count is passed down. But here we might be killing the FIRST chain enemy.
+            // If killed by player, start new chain.
+            const chainCount = Math.floor(randomRange(5, 7));
+            addParticle(target.pos, 1, COLORS.enemyChain, 'text', `连锁`, 1.5);
+            spawnProjectile(target.pos, (nearest as Enemy).id, 'CHAIN', chainCount, COLORS.enemyChain);
+        }
+    }
+
+    // --- BONUS LOGIC ---
+    if (target.bonus === BonusType.HEAL) {
+      soundService.playHeal();
+      baseHpRef.current = Math.min(baseHpRef.current + 1, GAME_CONFIG.baseMaxHp);
+      setHudBaseHp(baseHpRef.current);
+      triggerScreenFlash(COLORS.bonusHeal, 0.4);
+      addParticle({x:0, y:0}, 20, COLORS.bonusHeal, 'spark');
+      addParticle({x:0, y:0}, 1, COLORS.bonusHeal, 'text', 'HP +1', 2.0);
+    } else if (target.bonus === BonusType.SLOW) {
+      soundService.playSlow();
+      slowTimerRef.current = GAME_CONFIG.slowDuration;
+      setActiveEffects(prev => [...prev, 'SLOW']);
+      triggerScreenFlash(COLORS.bonusSlow, 0.4);
+      addParticle(target.pos, 1, COLORS.bonusSlow, 'text', '时间减速!', 2.0);
+    } else if (target.bonus === BonusType.BOMB) {
+      soundService.playBombExplosion();
+      const bombPos = target.pos;
+      triggerScreenFlash(COLORS.bonusBomb, 0.6);
+      cameraShakeRef.current = 30; 
+      addParticle(bombPos, 1, COLORS.bonusBomb, 'shockwave', '', 3.0);
+      addParticle(bombPos, 40, COLORS.bonusBomb, 'spark');
+      
+      let bombKills = 0;
+      for (let i = enemiesRef.current.length - 1; i >= 0; i--) {
+        const other = enemiesRef.current[i];
+        if (other.id === target.id) continue;
+        const dx = other.pos.x - bombPos.x;
+        const dy = other.pos.y - bombPos.y;
+        if (Math.sqrt(dx*dx + dy*dy) < GAME_CONFIG.bombRadius) {
+          other.hp = 0;
+          addParticle(other.pos, 10, COLORS.bonusBomb, 'spark');
+          bombKills++;
+        }
+      }
+      if (bombKills > 0) {
+         addParticle(bombPos, 1, COLORS.bonusBomb, 'text', `连爆 x${bombKills}`, 1.5);
+         statsRef.current.kills += bombKills;
+         statsRef.current.score += bombKills * 150;
+      }
+    }
+    
+    // Cleanup is done by the caller (removing from array) or setting hp=0
   };
 
   // --- Input Handling ---
@@ -242,166 +359,64 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         target.pos.y += Math.sin(dodgeAngle) * dodgeDist;
         addParticle(target.pos, 5, COLORS.enemyFast, 'text', '闪避!');
         cameraShakeRef.current = 2;
-        soundService.playMiss(); // Dodge sounds like a miss
+        soundService.playMiss(); 
         return; 
       }
 
       // Move Player
-      soundService.playLaser(); // Shoot/Dash sound
+      soundService.playLaser(); 
       player.trail.push({ ...player.pos });
       if (player.trail.length > 10) player.trail.shift();
       player.pos = { ...target.pos };
 
       // Damage Logic
       target.hp -= 1;
-
-      // Check Combo Buff (Pre-calculation for 5-hit streaks)
-      
       let comboTriggered = false;
 
       if (target.hp > 0) {
-        // HIT (Shield or Elite)
+        // HIT
         cameraShakeRef.current = 5;
         addParticle(target.pos, 5, target.color, 'spark');
-        
         let hitText = 'HIT';
         if (target.type === EnemyType.SHIELD) hitText = '格挡';
         if (target.type === EnemyType.ELITE) hitText = `HP ${target.hp}`;
-        
         addParticle(target.pos, 1, '#fff', 'text', hitText);
         statsRef.current.score += 50;
         statsRef.current.combo++;
-        
-        // Combo Sound & Visuals
         soundService.playCombo(statsRef.current.combo);
-
         comboTriggered = true;
         comboTimerRef.current = GAME_CONFIG.comboDecay;
       } else {
         // KILL
         soundService.playCombo(statsRef.current.combo);
-
         statsRef.current.score += 100 * (1 + statsRef.current.combo * 0.1);
         statsRef.current.kills++;
         statsRef.current.combo++;
-        
         comboTriggered = true;
         if (statsRef.current.combo > statsRef.current.maxCombo) {
           statsRef.current.maxCombo = statsRef.current.combo;
         }
         comboTimerRef.current = GAME_CONFIG.comboDecay;
 
-        // --- REFLECT LOGIC ---
-        if (target.type === EnemyType.REFLECT) {
-            soundService.playReflect();
-            triggerScreenFlash(COLORS.enemyReflect, 0.3);
-            
-            // Find neighbors
-            const others = enemiesRef.current.filter(e => e.id !== target.id); // Valid candidates
-            const candidates = others.map(other => ({
-                enemy: other,
-                dist: Math.sqrt(Math.pow(other.pos.x - target.pos.x, 2) + Math.pow(other.pos.y - target.pos.y, 2))
-            })).sort((a, b) => a.dist - b.dist);
-            
-            const reflectCount = Math.floor(randomRange(5, 12));
-            const targets = candidates.slice(0, reflectCount);
-            
-            if (targets.length > 0) {
-                 addParticle(target.pos, 1, COLORS.enemyReflect, 'text', `连锁 x${targets.length}`, 1.5);
-            }
+        // Handle Death Logic (Spawning projectiles etc)
+        handleEnemyDeath(target, player.pos);
 
-            targets.forEach(t => {
-                // Kill target
-                t.enemy.hp = 0;
-                addParticle(t.enemy.pos, 15, COLORS.enemyReflect, 'spark');
-                
-                // Add Beam
-                addParticle(target.pos, 1, COLORS.enemyReflect, 'beam', '', 1, t.enemy.pos);
-                
-                statsRef.current.score += 200;
-                statsRef.current.kills++;
-            });
-        }
-
-        // Apply Entity Bonuses
-        if (target.bonus === BonusType.HEAL) {
-          soundService.playHeal();
-          baseHpRef.current = Math.min(baseHpRef.current + 1, GAME_CONFIG.baseMaxHp);
-          setHudBaseHp(baseHpRef.current);
-          
-          triggerScreenFlash(COLORS.bonusHeal, 0.4);
-          addParticle({x:0, y:0}, 20, COLORS.bonusHeal, 'spark');
-          addParticle({x:0, y:0}, 1, COLORS.bonusHeal, 'text', 'HP +1', 2.0);
-          addParticle({x:0, y:0}, 1, COLORS.bonusHeal, 'shockwave', '', 0.5);
-
-        } else if (target.bonus === BonusType.SLOW) {
-          soundService.playSlow();
-          slowTimerRef.current = GAME_CONFIG.slowDuration;
-          setActiveEffects(prev => [...prev, 'SLOW']);
-          
-          triggerScreenFlash(COLORS.bonusSlow, 0.4);
-          addParticle(target.pos, 1, COLORS.bonusSlow, 'text', '时间减速!', 2.0);
-          addParticle(target.pos, 20, COLORS.bonusSlow, 'spark');
-
-        } else if (target.bonus === BonusType.BOMB) {
-          soundService.playBombExplosion();
-          // AOE Logic
-          const bombPos = target.pos;
-          triggerScreenFlash(COLORS.bonusBomb, 0.6);
-          
-          cameraShakeRef.current = 30; // HUGE shake
-          addParticle(bombPos, 1, COLORS.bonusBomb, 'shockwave', '', 3.0); // Big shockwave
-          addParticle(bombPos, 40, COLORS.bonusBomb, 'spark');
-          
-          let bombKills = 0;
-          for (let i = enemiesRef.current.length - 1; i >= 0; i--) {
-            const other = enemiesRef.current[i];
-            if (other.id === target.id) continue;
-            
-            const dx = other.pos.x - bombPos.x;
-            const dy = other.pos.y - bombPos.y;
-            const dist = Math.sqrt(dx*dx + dy*dy);
-            
-            if (dist < GAME_CONFIG.bombRadius) {
-              other.hp = 0; // Instant kill for simplicity in bomb
-              addParticle(other.pos, 10, COLORS.bonusBomb, 'spark');
-              bombKills++;
-            }
-          }
-          if (bombKills > 0) {
-             addParticle(bombPos, 1, COLORS.bonusBomb, 'text', `连爆 x${bombKills}`, 1.5);
-             statsRef.current.kills += bombKills;
-             statsRef.current.score += bombKills * 150;
-          }
-        }
-
-        // Cleanup
+        // Remove Enemy
         enemiesRef.current.splice(targetIndex, 1);
-        
-        // Remove dead from AOE/Reflect just in case
         enemiesRef.current = enemiesRef.current.filter(e => e.hp > 0);
 
-        // Standard Effects
-        if (target.bonus === BonusType.NONE) {
-            cameraShakeRef.current = 10;
-        }
+        if (target.bonus === BonusType.NONE) cameraShakeRef.current = 10;
         addParticle(target.pos, 10, target.color, 'spark');
         addParticle(target.pos, 1, '#fff', 'ring');
       }
 
-      // --- COMBO VISUAL PROMPT (Every 5) ---
+      // Combo Buffs
       if (comboTriggered && statsRef.current.combo > 0 && statsRef.current.combo % 5 === 0) {
-        addParticle(player.pos, 1, '#ffdd00', 'text', `${statsRef.current.combo}连击!`, 2.5); // Large text
-        triggerScreenFlash(COLORS.player, 0.2); // Brief flash
-      }
-
-      // --- COMBO BUFF SYSTEM ---
-      if (comboTriggered && statsRef.current.combo > 0 && statsRef.current.combo % 5 === 0) {
-        const buffType = Math.random();
+        addParticle(player.pos, 1, '#ffdd00', 'text', `${statsRef.current.combo}连击!`, 2.5);
+        triggerScreenFlash(COLORS.player, 0.2);
         
-        // Only give major buffs occasionally or if base HP is low to balance
+        const buffType = Math.random();
         if (buffType > 0.5) {
-          // Heal
           if (baseHpRef.current < GAME_CONFIG.baseMaxHp) {
              soundService.playPowerup();
              baseHpRef.current += 1;
@@ -413,9 +428,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
              addParticle(player.pos, 1, COLORS.player, 'text', '连击奖励: 500分', 1.2);
           }
         } else {
-          // Slow
-          soundService.playPowerup(); // Subtle sound for buff
-          slowTimerRef.current = Math.max(slowTimerRef.current, 10000); // 10 seconds
+          soundService.playPowerup();
+          slowTimerRef.current = Math.max(slowTimerRef.current, 10000); 
           if (!activeEffects.includes('SLOW')) setActiveEffects(prev => [...prev, 'SLOW']);
           addParticle(player.pos, 15, COLORS.bonusSlow, 'spark');
           addParticle(player.pos, 1, COLORS.bonusSlow, 'text', '连击奖励: 减速10s', 1.5);
@@ -443,7 +457,6 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     const rawDt = (time - lastTimeRef.current) / 1000;
     lastTimeRef.current = time;
     
-    // Slow Motion Logic
     let dt = rawDt;
     if (slowTimerRef.current > 0) {
       dt = rawDt * GAME_CONFIG.slowFactor;
@@ -460,21 +473,19 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       // 1. Update
       
       if (arenaSizeRef.current > GAME_CONFIG.minArenaSize) {
-        arenaSizeRef.current -= GAME_CONFIG.shrinkRate * rawDt; // Arena shrinks at normal time
+        arenaSizeRef.current -= GAME_CONFIG.shrinkRate * rawDt; 
       }
 
-      // Update Screen Flash
       if (screenFlashRef.current) {
-          screenFlashRef.current.life -= rawDt * 2.0; // Flash fades out fast
+          screenFlashRef.current.life -= rawDt * 2.0; 
           if (screenFlashRef.current.life <= 0) {
               screenFlashRef.current = null;
           }
       }
 
-      spawnTimerRef.current -= rawDt * 1000; // Spawn timer runs on real time
+      spawnTimerRef.current -= rawDt * 1000; 
       if (spawnTimerRef.current <= 0) {
         spawnEnemy();
-        // Recalculate next spawn time based on dynamic difficulty
         const diffParams = getDifficultyParams(statsRef.current.kills);
         spawnTimerRef.current = Math.max(diffParams.spawnInterval, GAME_CONFIG.minSpawnRate);
       }
@@ -483,7 +494,6 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       for (let i = enemiesRef.current.length - 1; i >= 0; i--) {
         const enemy = enemiesRef.current[i];
         
-        // Move towards Base (0,0)
         const dx = 0 - enemy.pos.x;
         const dy = 0 - enemy.pos.y;
         const dist = Math.sqrt(dx*dx + dy*dy);
@@ -494,14 +504,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
           enemy.pos.x += moveX;
           enemy.pos.y += moveY;
         } else {
-          // HIT BASE
           soundService.playBaseAlarm();
           baseHpRef.current -= 1;
           setHudBaseHp(baseHpRef.current);
           cameraShakeRef.current = 20;
           addParticle(enemy.pos, 20, '#ff0000', 'spark');
           addParticle({x:0, y:0}, 1, '#ff0000', 'ring');
-          enemiesRef.current.splice(i, 1); // Enemy dies on impact
+          enemiesRef.current.splice(i, 1);
           
           if (baseHpRef.current <= 0) {
             setGameState(GameState.GAME_OVER);
@@ -510,6 +519,87 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
           }
         }
       }
+
+      // --- NEW: Update Projectiles ---
+      for (let i = projectilesRef.current.length - 1; i >= 0; i--) {
+        const proj = projectilesRef.current[i];
+        
+        // Find target
+        const target = enemiesRef.current.find(e => e.id === proj.targetId);
+        
+        if (!target) {
+            // Target dead/gone. Fizzle out.
+            addParticle(proj.pos, 3, proj.color, 'spark');
+            projectilesRef.current.splice(i, 1);
+            continue;
+        }
+
+        // Move projectile
+        const dx = target.pos.x - proj.pos.x;
+        const dy = target.pos.y - proj.pos.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const moveDist = proj.speed * dt; // Uses slowed time? No, usually projectiles fly normal speed or affected? Let's use dt (affected by slow)
+
+        if (dist <= moveDist) {
+            // HIT
+            proj.pos = { ...target.pos };
+            projectilesRef.current.splice(i, 1);
+            
+            // Damage/Kill Logic
+            target.hp = 0; // Instant kill
+            
+            // Visuals
+            addParticle(target.pos, 10, proj.color, 'spark');
+            
+            // Stats
+            statsRef.current.score += 200;
+            statsRef.current.kills++;
+            
+            // Trigger Death Logic (Chain reaction)
+            // But only if it's CHAIN type do we continue
+            if (proj.type === 'CHAIN' && proj.chainRemaining > 0) {
+                // Find NEXT target
+                const others = enemiesRef.current.filter(e => e.id !== target.id && e.hp > 0);
+                let nearest: Enemy | null = null;
+                let minDist = Infinity;
+                others.forEach(other => {
+                     const d = Math.sqrt(Math.pow(other.pos.x - target.pos.x, 2) + Math.pow(other.pos.y - target.pos.y, 2));
+                     if (d < minDist) {
+                         minDist = d;
+                         nearest = other;
+                     }
+                });
+                
+                if (nearest) {
+                    spawnProjectile(target.pos, (nearest as Enemy).id, 'CHAIN', proj.chainRemaining - 1, proj.color);
+                }
+            }
+
+            // Remove dead enemy
+            const idx = enemiesRef.current.findIndex(e => e.id === target.id);
+            if (idx !== -1) enemiesRef.current.splice(idx, 1);
+
+        } else {
+            // Travel
+            proj.pos.x += (dx / dist) * moveDist;
+            proj.pos.y += (dy / dist) * moveDist;
+            
+            // Add trail particle occasionally
+            if (Math.random() < 0.3) {
+                 particlesRef.current.push({
+                    id: Math.random().toString(),
+                    pos: { ...proj.pos },
+                    vel: { x:0, y:0 },
+                    life: 0.3,
+                    decay: 2.0,
+                    color: proj.color,
+                    size: 3,
+                    type: 'spark'
+                 });
+            }
+        }
+      }
+
 
       if (statsRef.current.combo > 0) {
         comboTimerRef.current -= rawDt * 1000;
@@ -629,7 +719,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         ctx.beginPath();
         
         // Custom Shapes based on Type
-        if (enemy.type === EnemyType.REFLECT) {
+        if (enemy.type === EnemyType.REFLECT || enemy.type === EnemyType.CHAIN) {
              // Diamond Shape
              ctx.save();
              ctx.translate(enemy.pos.x, enemy.pos.y);
@@ -657,12 +747,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         } else if (enemy.bonus !== BonusType.NONE) {
            ctx.shadowBlur = 15;
            ctx.shadowColor = enemy.color;
-        } else if (enemy.type !== EnemyType.REFLECT) { // REFLECT handled above
+        } else if (enemy.type !== EnemyType.REFLECT && enemy.type !== EnemyType.CHAIN) {
            ctx.shadowBlur = 5;
            ctx.shadowColor = enemy.color;
         }
         
-        if (enemy.type !== EnemyType.REFLECT) {
+        if (enemy.type !== EnemyType.REFLECT && enemy.type !== EnemyType.CHAIN) {
            ctx.fill();
         }
         
@@ -705,7 +795,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         
         ctx.restore();
         
-        // Bonus Icon Indicator (Small dot or symbol)
+        // Bonus Icon Indicator
         if (enemy.bonus === BonusType.HEAL) {
           ctx.fillStyle = '#fff';
           ctx.font = '10px Arial';
@@ -725,6 +815,24 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       ctx.shadowColor = COLORS.player;
       ctx.fill();
       ctx.shadowBlur = 0;
+
+      // Draw Projectiles (NEW)
+      projectilesRef.current.forEach(proj => {
+          ctx.beginPath();
+          ctx.arc(proj.pos.x, proj.pos.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = proj.color;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = proj.color;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          
+          // Draw tail
+          const target = enemiesRef.current.find(e => e.id === proj.targetId);
+          if (target) {
+            // Draw faint line to target? No, just a trail is better.
+            // Let's just draw the head strongly.
+          }
+      });
 
       // Draw Particles
       particlesRef.current.forEach(p => {
@@ -808,6 +916,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       };
       enemiesRef.current = [];
       particlesRef.current = [];
+      projectilesRef.current = []; // Reset projectiles
       statsRef.current = {
         score: 0, highScore: 0, combo: 0, maxCombo: 0, kills: 0, accuracy: 1, misses: 0, timeAlive: 0
       };
