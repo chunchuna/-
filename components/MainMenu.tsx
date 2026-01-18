@@ -1,21 +1,44 @@
-import React from 'react';
-import { Play, Keyboard, Shield } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Play, Keyboard, Shield, Globe, Users, FileText } from 'lucide-react';
+import { PeerData } from '../types';
+import { p2pService } from '../services/p2pService';
 
 interface MainMenuProps {
   onStart: () => void;
 }
 
 const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
+  const [updateLog, setUpdateLog] = useState<string>('读取服务器日志...');
+  const [onlinePeers, setOnlinePeers] = useState<PeerData[]>([]);
+  const [selfData, setSelfData] = useState<PeerData | null>(null);
+
+  useEffect(() => {
+    // Load Update Log
+    fetch('./update.txt')
+      .then(res => res.text())
+      .then(text => setUpdateLog(text))
+      .catch(() => setUpdateLog("无法连接到更新服务器。"));
+
+    // Subscribe to P2P Peers
+    const unsubscribe = p2pService.subscribe((peers) => {
+      setOnlinePeers(peers);
+    });
+    setSelfData(p2pService.getSelf());
+
+    return () => unsubscribe();
+  }, []);
+
   return (
-    <div className="relative z-10 flex flex-col items-center justify-center min-h-screen bg-black/90 text-white p-4">
-      <div className="max-w-2xl w-full border border-cyan-900 bg-black/50 p-12 backdrop-blur-sm relative overflow-hidden group">
-        
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
-        
-        <div className="relative z-10 flex flex-col items-center text-center">
-          <div className="mb-2 inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs tracking-[0.2em]">
+    <div className="relative z-10 flex flex-col md:flex-row h-screen bg-black/90 text-white overflow-hidden">
+      
+      {/* Background */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(0,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,255,0.03)_1px,transparent_1px)] bg-[size:30px_30px] pointer-events-none" />
+
+      {/* Left Panel: Game Title & Actions */}
+      <div className="w-full md:w-2/3 p-8 md:p-12 flex flex-col justify-center relative z-10">
+        <div className="mb-2 inline-flex items-center gap-2 px-3 py-1 w-fit rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs tracking-[0.2em]">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            核心系统上线
+            P2P 网络已连接
           </div>
           
           <h1 className="text-6xl md:text-8xl font-black font-display tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-800">
@@ -28,48 +51,73 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
 
           <button 
             onClick={onStart}
-            className="group relative px-12 py-4 bg-cyan-600 hover:bg-cyan-500 text-black font-bold text-xl font-display uppercase tracking-widest transition-all clip-path-polygon hover:scale-105 active:scale-95"
+            className="w-full md:w-auto group relative px-12 py-4 bg-cyan-600 hover:bg-cyan-500 text-black font-bold text-xl font-display uppercase tracking-widest transition-all clip-path-polygon hover:scale-105 active:scale-95 mb-8"
             style={{ clipPath: 'polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%)' }}
           >
-            <span className="flex items-center gap-3">
+            <span className="flex items-center justify-center gap-3">
               <Play className="w-5 h-5 fill-current" />
               启动防御协议
             </span>
           </button>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16 text-left w-full">
-            <div className="p-4 border border-white/10 bg-white/5 rounded">
-              <div className="flex items-center gap-3 mb-2 text-cyan-400">
-                <Shield size={20} />
-                <h3 className="font-bold font-display">守护</h3>
-              </div>
-              <p className="text-xs text-gray-400 font-mono leading-relaxed">
-                保护中央核心基地。任何敌人的触碰都会造成损伤。
-              </p>
+          {/* Update Log Panel */}
+          <div className="mt-auto border-t border-gray-800 pt-6">
+            <div className="flex items-center gap-2 text-gray-500 mb-2 font-mono text-xs">
+              <FileText size={14} />
+              系统更新日志 v1.0.2
             </div>
-            
-            <div className="p-4 border border-white/10 bg-white/5 rounded">
-              <div className="flex items-center gap-3 mb-2 text-magenta-500 text-[#ff0055]">
-                <Keyboard size={20} />
-                <h3 className="font-bold font-display">拦截</h3>
-              </div>
-              <p className="text-xs text-gray-400 font-mono leading-relaxed">
-                输入字母进行拦截。优先击杀靠近核心的敌人。
-              </p>
-            </div>
-
-            <div className="p-4 border border-white/10 bg-white/5 rounded">
-              <div className="flex items-center gap-3 mb-2 text-yellow-400">
-                <Play size={20} className="rotate-90" />
-                <h3 className="font-bold font-display">道具</h3>
-              </div>
-              <p className="text-xs text-gray-400 font-mono leading-relaxed">
-                利用特殊字母：回复血量、全屏减速或连锁爆炸。
-              </p>
+            <div className="font-mono text-sm text-gray-300 leading-relaxed opacity-80 max-w-xl">
+              {updateLog}
             </div>
           </div>
-        </div>
       </div>
+
+      {/* Right Panel: Network Status & Leaderboard */}
+      <div className="w-full md:w-1/3 border-l border-gray-800 bg-black/40 backdrop-blur-sm p-6 flex flex-col relative z-10">
+         <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-800">
+           <div className="flex items-center gap-2 text-cyan-400">
+             <Globe size={18} />
+             <span className="font-display font-bold tracking-widest">在线特工</span>
+           </div>
+           <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
+             <Users size={14} />
+             <span>{onlinePeers.length + 1} 在线</span>
+           </div>
+         </div>
+
+         {/* Self Status */}
+         <div className="mb-6 p-4 bg-cyan-900/20 border border-cyan-800/50 rounded">
+            <div className="text-[10px] text-cyan-500 uppercase tracking-widest mb-1">本机连接</div>
+            <div className="flex justify-between items-end">
+              <span className="text-xl font-bold text-white">{selfData?.name || 'Unknown'}</span>
+              <span className="font-mono text-yellow-400 text-sm">HI-SCORE: {selfData?.highScore || 0}</span>
+            </div>
+         </div>
+
+         {/* Leaderboard List */}
+         <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+           <div className="space-y-2">
+             {onlinePeers.length === 0 ? (
+               <div className="text-gray-600 text-sm font-mono text-center py-10">
+                 正在扫描附近信号...<br/>(暂无其他玩家在线)
+               </div>
+             ) : (
+               onlinePeers.map((peer, idx) => (
+                 <div key={peer.id} className="flex items-center justify-between p-3 bg-white/5 hover:bg-white/10 rounded transition-colors border border-transparent hover:border-white/20 group">
+                   <div className="flex items-center gap-3">
+                     <span className={`font-mono font-bold w-6 text-center ${idx < 3 ? 'text-yellow-400' : 'text-gray-600'}`}>
+                       #{idx + 1}
+                     </span>
+                     <span className="text-sm font-bold text-gray-300 group-hover:text-white">{peer.name}</span>
+                   </div>
+                   <span className="font-mono text-cyan-400 text-sm">{peer.highScore}</span>
+                 </div>
+               ))
+             )}
+           </div>
+         </div>
+      </div>
+
     </div>
   );
 };

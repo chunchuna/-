@@ -4,6 +4,7 @@ export type Vector2 = {
 };
 
 export enum GameState {
+  INIT = 'INIT', // Name Input
   MENU = 'MENU',
   PLAYING = 'PLAYING',
   GAME_OVER = 'GAME_OVER',
@@ -67,4 +68,11 @@ export interface GameStats {
   misses: number;
   timeAlive: number;
   finalBaseHp?: number;
+}
+
+export interface PeerData {
+  id: string;
+  name: string;
+  highScore: number;
+  lastSeen: number;
 }
