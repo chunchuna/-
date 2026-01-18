@@ -14,6 +14,8 @@ export enum EnemyType {
   NORMAL = 'NORMAL',
   SHIELD = 'SHIELD', 
   FAST = 'FAST',    
+  ROTATING = 'ROTATING', // New: Spinning text
+  ELITE = 'ELITE',       // New: High HP, Big, Glowing
 }
 
 export enum BonusType {

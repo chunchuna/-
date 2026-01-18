@@ -68,7 +68,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
   const spawnEnemy = () => {
     const side = Math.floor(Math.random() * 4);
     const size = arenaSizeRef.current;
-    const offset = 50;
+    const offset = 60; // Increased offset so big enemies don't spawn onscreen
     let x = 0, y = 0;
 
     switch (side) {
@@ -84,20 +84,39 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       ? availableChars[Math.floor(Math.random() * availableChars.length)] 
       : ALPHABET[Math.floor(Math.random() * 26)]; 
 
-    const difficulty = Math.min(statsRef.current.kills / 100, 1.0);
+    // Difficulty Progression
+    const kills = statsRef.current.kills;
+    const difficulty = Math.min(kills / 100, 1.0);
     const rand = Math.random();
     
     let type = EnemyType.NORMAL;
     let color = COLORS.enemyNormal;
     let hp = 1;
+    let radius = 18;
     let bonus = BonusType.NONE;
 
     // Enemy Type Logic
-    if (rand < 0.15 + (difficulty * 0.2)) {
+    // Elite (Starts appearing after 30 kills)
+    if (kills > 30 && rand < 0.05 + (difficulty * 0.1)) {
+      type = EnemyType.ELITE;
+      color = COLORS.enemyElite;
+      hp = Math.floor(randomRange(5, 8)); // 5 to 7 HP
+      radius = 28; // Bigger
+    } 
+    // Rotating (Starts appearing after 15 kills)
+    else if (kills > 15 && rand < 0.2 + (difficulty * 0.15)) {
+      type = EnemyType.ROTATING;
+      color = COLORS.enemyRotating;
+      hp = 1;
+    }
+    // Shield
+    else if (rand < 0.2 + (difficulty * 0.15)) {
       type = EnemyType.SHIELD;
       color = COLORS.enemyShield;
       hp = 2; 
-    } else if (rand < 0.3 + (difficulty * 0.3)) {
+    } 
+    // Fast
+    else if (rand < 0.35 + (difficulty * 0.2)) {
       type = EnemyType.FAST;
       color = COLORS.enemyFast;
       hp = 1;
@@ -120,15 +139,17 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
 
     // Speed scaling
     const speedMultiplier = 1 + (difficulty * 2.0);
-    const baseSpeed = type === EnemyType.FAST 
-      ? GAME_CONFIG.enemySpeedBase * 1.5 
-      : GAME_CONFIG.enemySpeedBase;
+    let baseSpeed = GAME_CONFIG.enemySpeedBase;
+    
+    if (type === EnemyType.FAST) baseSpeed *= 1.5;
+    if (type === EnemyType.ELITE) baseSpeed *= 0.6; // Elites are slower
+
     const finalSpeed = Math.min(baseSpeed * speedMultiplier, GAME_CONFIG.enemySpeedMax);
 
     enemiesRef.current.push({
       id: Math.random().toString(),
       pos: { x, y },
-      radius: 18, // Slightly larger targets
+      radius: radius,
       color: color,
       char: char,
       type: type,
@@ -174,27 +195,40 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       // Damage Logic
       target.hp -= 1;
 
+      // Check Combo Buff (Pre-calculation for 5-hit streaks)
+      // We check logic inside hit/kill blocks, but we need to know if this hit contributes to combo
+      // If we don't kill, combo still goes up.
+      
+      let comboTriggered = false;
+
       if (target.hp > 0) {
-        // Shield Hit
-        soundService.playHit(); // Shield hit sound
+        // HIT (Shield or Elite)
+        soundService.playHit();
         cameraShakeRef.current = 5;
         addParticle(target.pos, 5, target.color, 'spark');
-        addParticle(target.pos, 1, '#fff', 'text', '格挡');
+        
+        let hitText = 'HIT';
+        if (target.type === EnemyType.SHIELD) hitText = '格挡';
+        if (target.type === EnemyType.ELITE) hitText = `HP ${target.hp}`;
+        
+        addParticle(target.pos, 1, '#fff', 'text', hitText);
         statsRef.current.score += 50;
         statsRef.current.combo++;
+        comboTriggered = true;
         comboTimerRef.current = GAME_CONFIG.comboDecay;
       } else {
-        // Kill Logic
+        // KILL
         soundService.playExplosion();
         statsRef.current.score += 100 * (1 + statsRef.current.combo * 0.1);
         statsRef.current.kills++;
         statsRef.current.combo++;
+        comboTriggered = true;
         if (statsRef.current.combo > statsRef.current.maxCombo) {
           statsRef.current.maxCombo = statsRef.current.combo;
         }
         comboTimerRef.current = GAME_CONFIG.comboDecay;
 
-        // Apply Bonuses
+        // Apply Entity Bonuses
         if (target.bonus === BonusType.HEAL) {
           soundService.playPowerup();
           baseHpRef.current = Math.min(baseHpRef.current + 1, GAME_CONFIG.baseMaxHp);
@@ -246,6 +280,31 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         addParticle(target.pos, 10, target.color, 'spark');
         addParticle(target.pos, 1, '#fff', 'ring');
       }
+
+      // --- COMBO BUFF SYSTEM ---
+      if (comboTriggered && statsRef.current.combo > 0 && statsRef.current.combo % 5 === 0) {
+        soundService.playPowerup();
+        const buffType = Math.random();
+        
+        if (buffType > 0.5) {
+          // Heal
+          if (baseHpRef.current < GAME_CONFIG.baseMaxHp) {
+            baseHpRef.current += 1;
+            setHudBaseHp(baseHpRef.current);
+            addParticle(player.pos, 10, COLORS.bonusHeal, 'spark');
+            addParticle(player.pos, 1, COLORS.bonusHeal, 'text', '连击奖励: +1 HP', 1.2);
+          } else {
+             statsRef.current.score += 500;
+             addParticle(player.pos, 1, COLORS.player, 'text', '连击奖励: 500分', 1.2);
+          }
+        } else {
+          // Slow
+          slowTimerRef.current = Math.max(slowTimerRef.current, 10000); // 10 seconds
+          if (!activeEffects.includes('SLOW')) setActiveEffects(prev => [...prev, 'SLOW']);
+          addParticle(player.pos, 10, COLORS.bonusSlow, 'spark');
+          addParticle(player.pos, 1, COLORS.bonusSlow, 'text', '连击奖励: 减速10s', 1.2);
+        }
+      }
       
     } else {
       soundService.playMiss();
@@ -258,7 +317,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     setHudScore(Math.floor(statsRef.current.score));
     setHudCombo(statsRef.current.combo);
 
-  }, [gameState]);
+  }, [gameState, activeEffects]);
 
 
   // --- Game Loop ---
@@ -445,7 +504,14 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         ctx.arc(enemy.pos.x, enemy.pos.y, enemy.radius, 0, Math.PI * 2);
         ctx.fillStyle = enemy.color;
         
-        if (enemy.bonus !== BonusType.NONE) {
+        if (enemy.type === EnemyType.ELITE) {
+            // Pulsing Glow for Elite
+            const glowSize = Math.sin(time / 150) * 10 + 20;
+            ctx.shadowBlur = glowSize;
+            ctx.shadowColor = enemy.color;
+            // Pulsing inner fill
+            ctx.globalAlpha = 0.8 + Math.sin(time / 100) * 0.2;
+        } else if (enemy.bonus !== BonusType.NONE) {
            ctx.shadowBlur = 15;
            ctx.shadowColor = enemy.color;
         } else {
@@ -453,20 +519,44 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
            ctx.shadowColor = enemy.color;
         }
         ctx.fill();
+        ctx.globalAlpha = 1.0;
         ctx.shadowBlur = 0;
 
-        // Shield Ring
-        if (enemy.hp > 1) {
+        // Extra Rings
+        if (enemy.type === EnemyType.SHIELD || enemy.hp > 1) {
           ctx.beginPath();
           ctx.arc(enemy.pos.x, enemy.pos.y, enemy.radius + 6, 0, Math.PI * 2);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = enemy.type === EnemyType.ELITE ? '#ffaa00' : '#ffffff';
+          ctx.lineWidth = enemy.type === EnemyType.ELITE ? 4 : 2;
           ctx.stroke();
+        }
+        
+        // Elite Extra Ring
+        if (enemy.type === EnemyType.ELITE) {
+            ctx.beginPath();
+            ctx.arc(enemy.pos.x, enemy.pos.y, enemy.radius + 12, 0 + (time/500), Math.PI + (time/500));
+            ctx.strokeStyle = '#ffaa00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
         }
 
         // Letter
+        ctx.save();
+        if (enemy.type === EnemyType.ROTATING) {
+            ctx.translate(enemy.pos.x, enemy.pos.y);
+            ctx.rotate(time / 200); // Rotate based on time
+            ctx.translate(-enemy.pos.x, -enemy.pos.y);
+        }
+
         ctx.fillStyle = '#000';
+        if (enemy.type === EnemyType.ELITE) {
+            ctx.font = 'bold 24px "Share Tech Mono"';
+        } else {
+            ctx.font = 'bold 20px "Share Tech Mono"';
+        }
         ctx.fillText(enemy.char, enemy.pos.x, enemy.pos.y + 2);
+        
+        ctx.restore();
         
         // Bonus Icon Indicator (Small dot or symbol)
         if (enemy.bonus === BonusType.HEAL) {
@@ -521,6 +611,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
     }
   };
 
+  // --- 1. Game Initialization & Loop (Runs ONLY when entering PLAYING state) ---
   useEffect(() => {
     if (gameState === GameState.PLAYING) {
       soundService.startBGM(); // Start music
@@ -542,13 +633,23 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       setHudBaseHp(GAME_CONFIG.baseMaxHp);
       lastTimeRef.current = performance.now();
       
-      window.addEventListener('keydown', handleKeyDown);
+      // Start loop
       requestIdRef.current = requestAnimationFrame(loop);
     }
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      // Stop loop
       if (requestIdRef.current) cancelAnimationFrame(requestIdRef.current);
+    };
+  }, [gameState]); // Dependencies: ONLY gameState
+
+  // --- 2. Event Listener Binding (Re-binds when handleKeyDown updates, but DOES NOT reset game) ---
+  useEffect(() => {
+    if (gameState === GameState.PLAYING) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [gameState, handleKeyDown]);
 

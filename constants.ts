@@ -6,6 +6,8 @@ export const COLORS = {
   enemyNormal: '#ff0055', // 玫红 (普通)
   enemyFast: '#ffff00', // 黄色 (闪避/高速)
   enemyShield: '#888888', // 灰色/银色 (护盾)
+  enemyRotating: '#bd00ff', // 紫色 (旋转)
+  enemyElite: '#ffaa00', // 金色 (精英)
   
   // Bonus Colors
   bonusHeal: '#00ff55', // 绿色
