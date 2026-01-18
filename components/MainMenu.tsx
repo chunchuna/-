@@ -1,16 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { Play, Keyboard, Shield, Globe, Users, FileText } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Play, Globe, Users, FileText, ChevronUp } from 'lucide-react';
 import { PeerData } from '../types';
 import { p2pService } from '../services/p2pService';
 
 interface MainMenuProps {
   onStart: () => void;
+  lastRunScore?: number;
 }
 
-const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
+const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
   const [updateLog, setUpdateLog] = useState<string>('读取服务器日志...');
   const [onlinePeers, setOnlinePeers] = useState<PeerData[]>([]);
   const [selfData, setSelfData] = useState<PeerData | null>(null);
+  
+  // Animation State
+  const [displayScore, setDisplayScore] = useState(0);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
     // Load Update Log
@@ -19,14 +24,50 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
       .then(text => setUpdateLog(text))
       .catch(() => setUpdateLog("无法连接到更新服务器。"));
 
-    // Subscribe to P2P Peers
+    // Subscribe to Network Peers
     const unsubscribe = p2pService.subscribe((peers) => {
       setOnlinePeers(peers);
     });
-    setSelfData(p2pService.getSelf());
+    
+    // Initial Self Data
+    const currentSelf = p2pService.getSelf();
+    setSelfData(currentSelf);
+
+    // Animation Logic
+    if (lastRunScore > 0 && currentSelf) {
+      const finalScore = currentSelf.totalScore;
+      const startScore = finalScore - lastRunScore;
+      setDisplayScore(startScore);
+      setIsAnimating(true);
+
+      const duration = 2000; // 2 seconds
+      const startTime = performance.now();
+
+      const animate = (time: number) => {
+        const elapsed = time - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Ease out quart
+        const ease = 1 - Math.pow(1 - progress, 4);
+        
+        const current = Math.floor(startScore + (lastRunScore * ease));
+        setDisplayScore(current);
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          setIsAnimating(false);
+          setDisplayScore(finalScore);
+        }
+      };
+      
+      requestAnimationFrame(animate);
+    } else {
+      setDisplayScore(currentSelf?.totalScore || 0);
+    }
 
     return () => unsubscribe();
-  }, []);
+  }, [lastRunScore]);
 
   return (
     <div className="relative z-10 flex flex-col md:flex-row h-screen bg-black/90 text-white overflow-hidden">
@@ -38,7 +79,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
       <div className="w-full md:w-2/3 p-8 md:p-12 flex flex-col justify-center relative z-10">
         <div className="mb-2 inline-flex items-center gap-2 px-3 py-1 w-fit rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs tracking-[0.2em]">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            P2P 网络已连接
+            全球网络已连接
           </div>
           
           <h1 className="text-6xl md:text-8xl font-black font-display tracking-tighter mb-2 text-transparent bg-clip-text bg-gradient-to-b from-white to-cyan-800">
@@ -51,12 +92,13 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
 
           <button 
             onClick={onStart}
-            className="w-full md:w-auto group relative px-12 py-4 bg-cyan-600 hover:bg-cyan-500 text-black font-bold text-xl font-display uppercase tracking-widest transition-all clip-path-polygon hover:scale-105 active:scale-95 mb-8"
+            disabled={isAnimating}
+            className={`w-full md:w-auto group relative px-12 py-4 text-black font-bold text-xl font-display uppercase tracking-widest transition-all clip-path-polygon hover:scale-105 active:scale-95 mb-8 ${isAnimating ? 'bg-gray-600 cursor-wait' : 'bg-cyan-600 hover:bg-cyan-500'}`}
             style={{ clipPath: 'polygon(10% 0, 100% 0, 100% 70%, 90% 100%, 0 100%, 0 30%)' }}
           >
             <span className="flex items-center justify-center gap-3">
               <Play className="w-5 h-5 fill-current" />
-              启动防御协议
+              {isAnimating ? '积分结算中...' : '启动防御协议'}
             </span>
           </button>
 
@@ -64,7 +106,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
           <div className="mt-auto border-t border-gray-800 pt-6">
             <div className="flex items-center gap-2 text-gray-500 mb-2 font-mono text-xs">
               <FileText size={14} />
-              系统更新日志 v1.0.2
+              系统更新日志
             </div>
             <div className="font-mono text-sm text-gray-300 leading-relaxed opacity-80 max-w-xl">
               {updateLog}
@@ -85,12 +127,24 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
            </div>
          </div>
 
-         {/* Self Status */}
-         <div className="mb-6 p-4 bg-cyan-900/20 border border-cyan-800/50 rounded">
-            <div className="text-[10px] text-cyan-500 uppercase tracking-widest mb-1">本机连接</div>
+         {/* Self Status with Animation */}
+         <div className="mb-6 p-4 bg-cyan-900/20 border border-cyan-800/50 rounded transition-all duration-300">
+            <div className="flex justify-between items-center mb-2">
+               <div className="text-[10px] text-cyan-500 uppercase tracking-widest">本机连接</div>
+               {isAnimating && (
+                 <div className="flex items-center text-yellow-400 text-xs font-bold animate-pulse">
+                   <ChevronUp size={12} /> +{lastRunScore}
+                 </div>
+               )}
+            </div>
             <div className="flex justify-between items-end">
               <span className="text-xl font-bold text-white">{selfData?.name || 'Unknown'}</span>
-              <span className="font-mono text-yellow-400 text-sm">HI-SCORE: {selfData?.highScore || 0}</span>
+              <div className="flex flex-col items-end">
+                 <span className="text-[10px] text-gray-400 tracking-wider">总贡献分</span>
+                 <span className={`font-mono text-xl ${isAnimating ? 'text-yellow-400 scale-110' : 'text-cyan-400'} transition-all duration-100`}>
+                   {displayScore.toLocaleString()}
+                 </span>
+              </div>
             </div>
          </div>
 
@@ -110,7 +164,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart }) => {
                      </span>
                      <span className="text-sm font-bold text-gray-300 group-hover:text-white">{peer.name}</span>
                    </div>
-                   <span className="font-mono text-cyan-400 text-sm">{peer.highScore}</span>
+                   <span className="font-mono text-cyan-400 text-sm">{peer.totalScore.toLocaleString()}</span>
                  </div>
                ))
              )}

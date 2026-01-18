@@ -73,6 +73,6 @@ export interface GameStats {
 export interface PeerData {
   id: string;
   name: string;
-  highScore: number;
+  totalScore: number; // Changed from highScore to totalScore
   lastSeen: number;
 }

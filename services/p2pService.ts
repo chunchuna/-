@@ -9,14 +9,14 @@ class P2PService {
   private sendStatus: any;
   private onStatus: any;
   private peers: Map<string, PeerData> = new Map();
-  private selfData: PeerData = { id: '', name: 'Unknown', highScore: 0, lastSeen: Date.now() };
+  private selfData: PeerData = { id: '', name: 'Unknown', totalScore: 0, lastSeen: Date.now() };
   private listeners: ((peers: PeerData[]) => void)[] = [];
 
   constructor() {
-    // Singleton initialization could happen here, but we wait for 'init'
+    // Singleton initialization
   }
 
-  public init(name: string) {
+  public init(name: string, initialTotalScore: number) {
     if (this.room) return; // Already initialized
 
     try {
@@ -28,16 +28,17 @@ class P2PService {
       this.sendStatus = sendStatus;
       this.onStatus = onStatus;
 
-      // Self ID (using trystero's selfId if available, or generating one)
+      // Self ID 
       this.selfData.id = this.room.selfId;
       this.selfData.name = name;
+      this.selfData.totalScore = initialTotalScore;
 
       // Handle incoming status
       this.onStatus((data: Partial<PeerData>, peerId: string) => {
         this.peers.set(peerId, {
           id: peerId,
           name: data.name || 'Unknown',
-          highScore: data.highScore || 0,
+          totalScore: data.totalScore || 0,
           lastSeen: Date.now()
         });
         this.notifyListeners();
@@ -61,25 +62,22 @@ class P2PService {
           this.prunePeers();
       }, 5000);
 
-      console.log('P2P Service Initialized for:', name);
+      console.log('Network Service Initialized for:', name);
     } catch (e) {
-      console.error("P2P Init Error:", e);
-      // Fail gracefully
+      console.error("Network Init Error:", e);
     }
   }
 
-  public updateScore(score: number) {
-    if (score > this.selfData.highScore) {
-      this.selfData.highScore = score;
-      this.broadcastStatus();
-    }
+  public updateTotalScore(newTotal: number) {
+    this.selfData.totalScore = newTotal;
+    this.broadcastStatus();
   }
 
   private broadcastStatus() {
     if (this.sendStatus) {
       this.sendStatus({
         name: this.selfData.name,
-        highScore: this.selfData.highScore
+        totalScore: this.selfData.totalScore
       });
     }
   }
@@ -110,8 +108,8 @@ class P2PService {
   }
 
   public getPeers(): PeerData[] {
-    // Return sorted by score
-    return Array.from(this.peers.values()).sort((a, b) => b.highScore - a.highScore);
+    // Return sorted by total score
+    return Array.from(this.peers.values()).sort((a, b) => b.totalScore - a.totalScore);
   }
 
   public getSelf(): PeerData {

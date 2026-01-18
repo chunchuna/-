@@ -11,35 +11,58 @@ const App: React.FC = () => {
   const [lastStats, setLastStats] = useState<GameStats>({
     score: 0, highScore: 0, combo: 0, maxCombo: 0, kills: 0, accuracy: 0, misses: 0, timeAlive: 0
   });
+  
+  // Track the score obtained in the most recent run to animate it in the menu
+  const [lastRunScore, setLastRunScore] = useState(0);
 
   useEffect(() => {
     // Check for existing name
     const savedName = localStorage.getItem('alpha_strike_agent_name');
+    
+    // Initialize total score
+    const savedTotalScore = parseInt(localStorage.getItem('alpha_strike_total_score') || '0', 10);
+    
     if (savedName) {
-      p2pService.init(savedName);
+      p2pService.init(savedName, savedTotalScore);
       setGameState(GameState.MENU);
     }
   }, []);
 
   const handleNameConfirm = (name: string) => {
     localStorage.setItem('alpha_strike_agent_name', name);
-    p2pService.init(name);
+    // New user starts with 0
+    localStorage.setItem('alpha_strike_total_score', '0');
+    p2pService.init(name, 0);
     setGameState(GameState.MENU);
   };
 
   const handleStart = () => {
+    setLastRunScore(0); // Reset for the new run
     setGameState(GameState.PLAYING);
   };
 
   const handleGameOver = (stats: GameStats) => {
     setLastStats(stats);
-    // Send score to P2P network
-    p2pService.updateScore(stats.score);
+    
+    // Accumulate Score
+    const currentTotal = parseInt(localStorage.getItem('alpha_strike_total_score') || '0', 10);
+    const newTotal = currentTotal + stats.score;
+    
+    // Save locally
+    localStorage.setItem('alpha_strike_total_score', newTotal.toString());
+    
+    // Update Network
+    p2pService.updateTotalScore(newTotal);
+    
+    // Set for animation reference
+    setLastRunScore(stats.score);
+    
     setGameState(GameState.GAME_OVER);
   };
 
   const handleRestart = () => {
-    setGameState(GameState.PLAYING);
+    // Go back to Menu instead of direct replay to show score animation
+    setGameState(GameState.MENU);
   };
 
   return (
@@ -50,7 +73,7 @@ const App: React.FC = () => {
       )}
 
       {gameState === GameState.MENU && (
-        <MainMenu onStart={handleStart} />
+        <MainMenu onStart={handleStart} lastRunScore={lastRunScore} />
       )}
 
       {/* GameEngine handles its own internal state loop, we just mount/unmount or show/hide */}
