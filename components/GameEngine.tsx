@@ -31,6 +31,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
   const cameraShakeRef = useRef<number>(0);
   const comboTimerRef = useRef<number>(0);
   const requestIdRef = useRef<number>();
+  const screenFlashRef = useRef<{color: string, life: number} | null>(null);
   
   // React State for HUD
   const [hudScore, setHudScore] = useState(0);
@@ -62,6 +63,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         text
       });
     }
+  };
+
+  // Helper: Trigger Screen Flash
+  const triggerScreenFlash = (color: string, life: number = 0.5) => {
+    screenFlashRef.current = { color, life };
   };
 
   // Helper: Spawn Enemy
@@ -230,22 +236,33 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
 
         // Apply Entity Bonuses
         if (target.bonus === BonusType.HEAL) {
-          soundService.playPowerup();
+          soundService.playHeal();
           baseHpRef.current = Math.min(baseHpRef.current + 1, GAME_CONFIG.baseMaxHp);
           setHudBaseHp(baseHpRef.current);
-          addParticle({x:0, y:0}, 10, COLORS.bonusHeal, 'spark');
-          addParticle({x:0, y:0}, 1, COLORS.bonusHeal, 'text', '基地修复!', 1.5);
+          
+          triggerScreenFlash(COLORS.bonusHeal, 0.4);
+          addParticle({x:0, y:0}, 20, COLORS.bonusHeal, 'spark');
+          addParticle({x:0, y:0}, 1, COLORS.bonusHeal, 'text', 'HP +1', 2.0);
+          addParticle({x:0, y:0}, 1, COLORS.bonusHeal, 'shockwave', '', 0.5);
+
         } else if (target.bonus === BonusType.SLOW) {
-          soundService.playPowerup();
+          soundService.playSlow();
           slowTimerRef.current = GAME_CONFIG.slowDuration;
           setActiveEffects(prev => [...prev, 'SLOW']);
-          addParticle(target.pos, 1, COLORS.bonusSlow, 'text', '全域减速!');
+          
+          triggerScreenFlash(COLORS.bonusSlow, 0.4);
+          addParticle(target.pos, 1, COLORS.bonusSlow, 'text', '时间减速!', 2.0);
+          addParticle(target.pos, 20, COLORS.bonusSlow, 'spark');
+
         } else if (target.bonus === BonusType.BOMB) {
-          soundService.playExplosion();
+          soundService.playBombExplosion();
           // AOE Logic
           const bombPos = target.pos;
-          addParticle(bombPos, 1, COLORS.bonusBomb, 'shockwave');
-          addParticle(bombPos, 15, COLORS.bonusBomb, 'spark');
+          triggerScreenFlash(COLORS.bonusBomb, 0.6);
+          
+          cameraShakeRef.current = 30; // HUGE shake
+          addParticle(bombPos, 1, COLORS.bonusBomb, 'shockwave', '', 3.0); // Big shockwave
+          addParticle(bombPos, 40, COLORS.bonusBomb, 'spark');
           
           let bombKills = 0;
           for (let i = enemiesRef.current.length - 1; i >= 0; i--) {
@@ -258,12 +275,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
             
             if (dist < GAME_CONFIG.bombRadius) {
               other.hp = 0; // Instant kill for simplicity in bomb
-              addParticle(other.pos, 5, COLORS.bonusBomb, 'spark');
+              addParticle(other.pos, 10, COLORS.bonusBomb, 'spark');
               bombKills++;
             }
           }
           if (bombKills > 0) {
-             addParticle(bombPos, 1, COLORS.bonusBomb, 'text', `连爆 x${bombKills}`);
+             addParticle(bombPos, 1, COLORS.bonusBomb, 'text', `连爆 x${bombKills}`, 1.5);
              statsRef.current.kills += bombKills;
              statsRef.current.score += bombKills * 150;
           }
@@ -276,7 +293,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
         enemiesRef.current = enemiesRef.current.filter(e => e.hp > 0);
 
         // Standard Effects
-        cameraShakeRef.current = 10;
+        if (target.bonus === BonusType.NONE) {
+            cameraShakeRef.current = 10;
+        }
         addParticle(target.pos, 10, target.color, 'spark');
         addParticle(target.pos, 1, '#fff', 'ring');
       }
@@ -291,18 +310,22 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
           if (baseHpRef.current < GAME_CONFIG.baseMaxHp) {
             baseHpRef.current += 1;
             setHudBaseHp(baseHpRef.current);
-            addParticle(player.pos, 10, COLORS.bonusHeal, 'spark');
-            addParticle(player.pos, 1, COLORS.bonusHeal, 'text', '连击奖励: +1 HP', 1.2);
+            soundService.playHeal();
+            triggerScreenFlash(COLORS.bonusHeal, 0.4);
+            addParticle(player.pos, 15, COLORS.bonusHeal, 'spark');
+            addParticle(player.pos, 1, COLORS.bonusHeal, 'text', '连击: +1 HP', 1.5);
           } else {
              statsRef.current.score += 500;
-             addParticle(player.pos, 1, COLORS.player, 'text', '连击奖励: 500分', 1.2);
+             addParticle(player.pos, 1, COLORS.player, 'text', '连击: 500分', 1.2);
           }
         } else {
           // Slow
+          soundService.playSlow();
           slowTimerRef.current = Math.max(slowTimerRef.current, 10000); // 10 seconds
           if (!activeEffects.includes('SLOW')) setActiveEffects(prev => [...prev, 'SLOW']);
-          addParticle(player.pos, 10, COLORS.bonusSlow, 'spark');
-          addParticle(player.pos, 1, COLORS.bonusSlow, 'text', '连击奖励: 减速10s', 1.2);
+          triggerScreenFlash(COLORS.bonusSlow, 0.4);
+          addParticle(player.pos, 15, COLORS.bonusSlow, 'spark');
+          addParticle(player.pos, 1, COLORS.bonusSlow, 'text', '连击: 减速10s', 1.5);
         }
       }
       
@@ -345,6 +368,14 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       
       if (arenaSizeRef.current > GAME_CONFIG.minArenaSize) {
         arenaSizeRef.current -= GAME_CONFIG.shrinkRate * rawDt; // Arena shrinks at normal time
+      }
+
+      // Update Screen Flash
+      if (screenFlashRef.current) {
+          screenFlashRef.current.life -= rawDt * 2.0; // Flash fades out fast
+          if (screenFlashRef.current.life <= 0) {
+              screenFlashRef.current = null;
+          }
       }
 
       spawnTimerRef.current -= rawDt * 1000; // Spawn timer runs on real time
@@ -607,6 +638,34 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
 
       ctx.restore();
 
+      // --- Post-Processing Layer (Full Screen Effects) ---
+      // 1. Screen Flash (Bomb/Heal)
+      if (screenFlashRef.current) {
+         ctx.fillStyle = screenFlashRef.current.color;
+         ctx.globalAlpha = screenFlashRef.current.life * 0.4;
+         ctx.fillRect(0, 0, canvas.width, canvas.height);
+         ctx.globalAlpha = 1.0;
+      }
+
+      // 2. Slow Motion Vignette
+      if (slowTimerRef.current > 0) {
+        const gradient = ctx.createRadialGradient(
+          canvas.width / 2, canvas.height / 2, canvas.height * 0.3,
+          canvas.width / 2, canvas.height / 2, canvas.height * 0.8
+        );
+        gradient.addColorStop(0, "rgba(0, 204, 255, 0)");
+        gradient.addColorStop(1, "rgba(0, 204, 255, 0.2)");
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Border Pulse
+        const pulse = (Math.sin(time / 200) + 1) * 0.5;
+        ctx.strokeStyle = `rgba(0, 204, 255, ${0.3 + pulse * 0.2})`;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      }
+
       requestIdRef.current = requestAnimationFrame(loop);
     }
   };
@@ -627,6 +686,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
       arenaSizeRef.current = GAME_CONFIG.initialArenaSize;
       spawnTimerRef.current = 0;
       slowTimerRef.current = 0;
+      screenFlashRef.current = null;
       
       setHudScore(0);
       setHudCombo(0);

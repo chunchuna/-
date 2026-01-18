@@ -105,6 +105,28 @@ class SoundService {
     this.createNoise(0.3);
   }
 
+  public playBombExplosion() {
+    if (!this.ctx || this.isMuted) return;
+    // Deeper, longer rumble
+    const t = this.ctx.currentTime;
+    
+    // Sub-bass impact
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(100, t);
+    osc.frequency.exponentialRampToValueAtTime(20, t + 0.8);
+    gain.gain.setValueAtTime(1.0, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8);
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+    osc.start(t);
+    osc.stop(t + 0.8);
+
+    // Loud Noise blast
+    this.createNoise(0.6);
+  }
+
   public playHit() {
     if (!this.ctx || this.isMuted) return;
     this.createOscillator('square', 150, 0.1, this.ctx.currentTime);
@@ -136,6 +158,45 @@ class SoundService {
     [440, 554, 659, 880].forEach((freq, i) => {
       this.createOscillator('sine', freq, 0.3, t + i * 0.05);
     });
+  }
+
+  public playHeal() {
+    if (!this.ctx || this.isMuted) return;
+    const t = this.ctx.currentTime;
+    // Magical chime up
+    const freqs = [523.25, 659.25, 783.99, 1046.50]; // C Major
+    freqs.forEach((freq, i) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t + i * 0.08);
+      gain.gain.setValueAtTime(0.4, t + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + i * 0.08 + 0.6);
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(t + i * 0.08);
+      osc.stop(t + i * 0.08 + 0.6);
+    });
+  }
+
+  public playSlow() {
+    if (!this.ctx || this.isMuted) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    
+    // Pitch down effect
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.exponentialRampToValueAtTime(50, t + 1.0);
+    
+    gain.gain.setValueAtTime(0.5, t);
+    gain.gain.linearRampToValueAtTime(0, t + 1.0);
+    
+    osc.connect(gain);
+    gain.connect(this.masterGain!);
+    osc.start(t);
+    osc.stop(t + 1.0);
   }
 
   public playBaseAlarm() {
