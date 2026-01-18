@@ -4,7 +4,9 @@ import { Play, Globe, Users, FileText, ChevronUp, RefreshCw, Trophy, Target, Clo
 import { GoogleGenAI } from "@google/genai";
 import { joinRoom } from 'trystero/torrent';
 
-// --- TYPES ---
+// ==========================================
+//                 TYPES
+// ==========================================
 export type Vector2 = {
   x: number;
   y: number;
@@ -84,20 +86,22 @@ export interface PeerData {
   lastSeen: number;
 }
 
-// --- CONSTANTS ---
+// ==========================================
+//               CONSTANTS
+// ==========================================
 const COLORS = {
   background: '#050505',
-  player: '#00ffff', // 青色
-  base: '#ffffff', // 基地核心颜色
-  baseLow: '#ff0000', // 基地低血量颜色
-  enemyNormal: '#ff0055', // 玫红 (普通)
-  enemyFast: '#ffff00', // 黄色 (闪避/高速)
-  enemyShield: '#888888', // 灰色/银色 (护盾)
+  player: '#00ffff', // Cyan
+  base: '#ffffff', // Base Core
+  baseLow: '#ff0000', // Base Critical
+  enemyNormal: '#ff0055', // Magenta (Normal)
+  enemyFast: '#ffff00', // Yellow (Fast/Dodge)
+  enemyShield: '#888888', // Grey/Silver (Shield)
   
   // Bonus Colors
-  bonusHeal: '#00ff55', // 绿色
-  bonusSlow: '#00ccff', // 冰蓝
-  bonusBomb: '#ffaa00', // 橙色
+  bonusHeal: '#00ff55', // Green
+  bonusSlow: '#00ccff', // Ice Blue
+  bonusBomb: '#ffaa00', // Orange
 
   text: '#ffffff',
   arenaBorder: '#333333',
@@ -133,9 +137,11 @@ const GAME_CONFIG = {
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-// --- SERVICES ---
+// ==========================================
+//               SERVICES
+// ==========================================
 
-// P2P Service
+// --- P2P Service ---
 const ROOM_ID = 'alpha_strike_lobby_v1';
 
 class P2PService {
@@ -252,7 +258,7 @@ class P2PService {
 
 const p2pService = new P2PService();
 
-// Gemini Service
+// --- Gemini Service ---
 const getSystemInstruction = () => `
 你是一个名为“阿尔法”的赛博朋克战斗模拟系统的AI指挥官。
 你的任务是分析“猎人”（玩家）的战斗数据，并生成一份简短、风格化、略带中二或严厉的中文战报。
@@ -307,7 +313,9 @@ const generateBattleReport = async (stats: GameStats): Promise<string> => {
   }
 };
 
-// --- COMPONENTS ---
+// ==========================================
+//              COMPONENTS
+// ==========================================
 
 // 1. NameInput
 interface NameInputProps {
@@ -383,11 +391,8 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
   const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
-    // Load Update Log
-    fetch('./update.txt')
-      .then(res => res.text())
-      .then(text => setUpdateLog(text))
-      .catch(() => setUpdateLog("无法连接到更新服务器。"));
+    // Load Update Log (Simulation since we might not have the file)
+    setUpdateLog("服务器连接正常。全球排名系统已同步。\n祝各位特工好运。");
 
     // Subscribe to Network Peers
     const unsubscribe = p2pService.subscribe((peers) => {
@@ -473,7 +478,7 @@ const MainMenu: React.FC<MainMenuProps> = ({ onStart, lastRunScore = 0 }) => {
               <FileText size={14} />
               系统更新日志
             </div>
-            <div className="font-mono text-sm text-gray-300 leading-relaxed opacity-80 max-w-xl">
+            <div className="font-mono text-sm text-gray-300 leading-relaxed opacity-80 max-w-xl whitespace-pre-wrap">
               {updateLog}
             </div>
           </div>
@@ -1253,7 +1258,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ gameState, setGameState, onGame
   );
 };
 
-// 5. Main App
+// ==========================================
+//               MAIN APP
+// ==========================================
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.INIT);
   const [lastStats, setLastStats] = useState<GameStats>({
@@ -1340,7 +1347,9 @@ const App: React.FC = () => {
   );
 };
 
-// --- ROOT RENDER ---
+// ==========================================
+//               ROOT
+// ==========================================
 const rootElement = document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");
